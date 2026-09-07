@@ -1,5 +1,6 @@
 import { Body, Controller, Logger, Post } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { Public } from '../auth/public.decorator';
 
 /**
  * Receiver for BMONI's async webhook events. Phase 1 just logs and
@@ -12,6 +13,11 @@ import { PrismaService } from '../prisma/prisma.service';
  * these payloads is not yet confirmed; BMONI_WEBHOOK_SECRET is a
  * placeholder for whenever that's documented — do not assume HMAC
  * verification is happening until that's wired up for real.
+ *
+ * Public: BMONI calls this directly, with no PayFlex user session — the
+ * only real protection this route should have is HMAC verification
+ * against BMONI_WEBHOOK_SECRET (not yet implemented, see above), never
+ * this app's own Bearer-token auth.
  */
 @Controller('webhooks')
 export class WebhooksController {
@@ -19,6 +25,7 @@ export class WebhooksController {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  @Public()
   @Post('bmoni')
   async receive(@Body() body: { type?: string; [key: string]: unknown }) {
     const type = body.type ?? 'unknown';

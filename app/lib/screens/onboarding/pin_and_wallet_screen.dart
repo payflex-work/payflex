@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/app_user.dart';
 import '../../services/api_client.dart';
+import '../../services/session_manager.dart';
 import '../../services/wallet_service.dart';
 import '../kyc/kyc_wizard_screen.dart';
 
@@ -9,9 +10,15 @@ import '../kyc/kyc_wizard_screen.dart';
 /// -> create-managed smart wallet. Everything that touches key material
 /// goes through WalletService (bmoni_embedded_sdk); everything that
 /// touches BMONI goes through ApiClient (the backend's BmoniClient).
+///
+/// [bootstrapToken] (from ApiClient.createUser) is scoped to exactly one
+/// call — setting the owner address — so a real login (challenge/sign/
+/// login) has to happen right after that, before anything else here can
+/// call a protected route. See services/session_manager.dart.
 class PinAndWalletScreen extends StatefulWidget {
   final AppUser user;
-  const PinAndWalletScreen({super.key, required this.user});
+  final String? bootstrapToken;
+  const PinAndWalletScreen({super.key, required this.user, this.bootstrapToken});
 
   @override
   State<PinAndWalletScreen> createState() => _PinAndWalletScreenState();
@@ -84,7 +91,15 @@ class _PinAndWalletScreenState extends State<PinAndWalletScreen> {
         address = await WalletService.provisionWallet();
       }
       _ownerAddress = address;
-      await _api.setOwnerAddress(widget.user.id, address);
+      await _api.setOwnerAddress(
+        widget.user.id,
+        address,
+        bootstrapToken: widget.bootstrapToken,
+      );
+      // The bootstrap token above is scoped to that one call — log in for
+      // real now so every route from here on (currencies, owner-proof
+      // challenge, smart wallet creation, KYC) has a proper access token.
+      await SessionManager.login(widget.user.id, _pin!);
       setState(() => _step = _Step.chooseCurrency);
       await _loadCurrencies();
     } catch (e) {

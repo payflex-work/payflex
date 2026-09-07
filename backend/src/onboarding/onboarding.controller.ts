@@ -3,11 +3,14 @@ import { OnboardingService } from './onboarding.service';
 import { RequestOwnerProofChallengeDto } from './dto/owner-proof-challenge.dto';
 import { CreateSmartWalletDto } from './dto/create-smart-wallet.dto';
 import { StartNigeriaDto } from './dto/start-nigeria.dto';
+import { Public } from '../auth/public.decorator';
 
 @Controller()
 export class OnboardingController {
   constructor(private readonly onboarding: OnboardingService) {}
 
+  // Public reference data (which stablecoins exist) — no user context.
+  @Public()
   @Get('onboarding/supported-currencies')
   supportedCurrencies() {
     return this.onboarding.getSupportedCurrencies();

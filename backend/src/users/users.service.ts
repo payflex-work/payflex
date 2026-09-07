@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BmoniClientService } from '../bmoni/bmoni-client.service';
 import { BmoniApiError } from '../bmoni/bmoni.errors';
@@ -59,8 +59,20 @@ export class UsersService {
     return user;
   }
 
+  /**
+   * Set-once. Changing a user's owner address after the fact would mean
+   * silently swapping which private key controls their BMONI wallets —
+   * this must never happen automatically or via a re-used bootstrap
+   * token; see UsersController.create's doc comment for the related
+   * account-hijack concern this closes off.
+   */
   async setOwnerAddress(id: string, ownerAddress: string): Promise<AppUser> {
-    await this.findById(id);
+    const user = await this.findById(id);
+    if (user.ownerAddress) {
+      throw new BadRequestException(
+        `User ${id} already has an owner address registered — it cannot be changed.`,
+      );
+    }
     return this.prisma.appUser.update({ where: { id }, data: { ownerAddress } });
   }
 }

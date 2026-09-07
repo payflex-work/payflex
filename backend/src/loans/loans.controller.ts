@@ -17,8 +17,8 @@ export class LoansController {
   }
 
   @Get(':loanId/repayments')
-  listRepayments(@Param('loanId') loanId: string) {
-    return this.loans.listRepayments(loanId);
+  listRepayments(@Param('id') id: string, @Param('loanId') loanId: string) {
+    return this.loans.listRepayments(id, loanId);
   }
 
   @Post('repayments/:repaymentId/pay')

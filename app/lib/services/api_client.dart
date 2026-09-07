@@ -20,11 +20,29 @@ class ApiException implements Exception {
 
 /// The app's only HTTP client. It talks exclusively to the PayFlex
 /// backend (never to BMONI directly) — see backend/src/bmoni for why.
+///
+/// Every screen constructs its own `ApiClient()` instance, so the current
+/// session's access token is held as a static field rather than an
+/// instance field — otherwise each new instance would start out
+/// unauthenticated. See services/session_manager.dart for the only place
+/// that's meant to read/write [accessToken]/[refreshToken] outside of the
+/// bootstrap-token special case handled inline in [setOwnerAddress].
 class ApiClient {
   final String baseUrl;
   ApiClient({this.baseUrl = Env.backendBaseUrl});
 
+  static String? accessToken;
+  static String? refreshToken;
+
   Uri _uri(String path) => Uri.parse('$baseUrl$path');
+
+  Map<String, String> _authHeaders() =>
+      accessToken != null ? {'Authorization': 'Bearer $accessToken'} : {};
+
+  Map<String, String> _jsonHeaders() => {
+        'Content-Type': 'application/json',
+        ..._authHeaders(),
+      };
 
   dynamic _decodeAnyOrThrow(http.Response res) {
     final body = res.body.isEmpty ? <String, dynamic>{} : jsonDecode(res.body);
@@ -45,7 +63,11 @@ class ApiClient {
   List<dynamic> _decodeListOrThrow(http.Response res) =>
       _decodeAnyOrThrow(res) as List<dynamic>;
 
-  Future<AppUser> createUser({
+  /// POST /users is public (needed before any token exists) and, for a
+  /// brand-new user, returns a one-time [bootstrapToken] scoped to exactly
+  /// one call: [setOwnerAddress]. It's null when the user already exists
+  /// and already has an owner address (see backend's UsersController).
+  Future<({AppUser user, String? bootstrapToken})> createUser({
     required String firstName,
     required String lastName,
     required String email,
@@ -53,7 +75,7 @@ class ApiClient {
   }) async {
     final res = await http.post(
       _uri('/users'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _jsonHeaders(),
       body: jsonEncode({
         'firstName': firstName,
         'lastName': lastName,
@@ -61,27 +83,89 @@ class ApiClient {
         'phoneNumber': phoneNumber,
       }),
     );
-    return AppUser.fromJson(_decodeOrThrow(res));
+    final body = _decodeOrThrow(res);
+    return (
+      user: AppUser.fromJson(body['user'] as Map<String, dynamic>),
+      bootstrapToken: body['bootstrapToken'] as String?,
+    );
   }
 
   Future<AppUser> getUser(String appUserId) async {
-    final res = await http.get(_uri('/users/$appUserId'));
+    final res = await http.get(_uri('/users/$appUserId'), headers: _authHeaders());
     return AppUser.fromJson(_decodeOrThrow(res));
   }
 
-  Future<AppUser> setOwnerAddress(String appUserId, String ownerAddress) async {
+  /// [bootstrapToken], when given, is used instead of the session's access
+  /// token — this is the one call the bootstrap token issued by
+  /// [createUser] is allowed to make (see AuthGuard on the backend).
+  Future<AppUser> setOwnerAddress(
+    String appUserId,
+    String ownerAddress, {
+    String? bootstrapToken,
+  }) async {
     final res = await http.patch(
       _uri('/users/$appUserId/owner-address'),
-      headers: {'Content-Type': 'application/json'},
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ${bootstrapToken ?? accessToken}',
+      },
       body: jsonEncode({'ownerAddress': ownerAddress}),
     );
     return AppUser.fromJson(_decodeOrThrow(res));
   }
 
   Future<List<String>> getSupportedCurrencies() async {
-    final res = await http.get(_uri('/onboarding/supported-currencies'));
+    final res = await http.get(_uri('/onboarding/supported-currencies'), headers: _authHeaders());
     final body = _decodeOrThrow(res);
     return List<String>.from(body['currencies'] as List);
+  }
+
+  // --- Auth (challenge-response login using the on-device owner key) ------
+  //
+  // See backend/src/auth — login reuses the same EVM key/signature already
+  // used for BMONI owner-proof challenges, via WalletService.signChallenge.
+
+  Future<String> requestLoginChallenge(String appUserId) async {
+    final res = await http.post(
+      _uri('/auth/challenge'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'appUserId': appUserId}),
+    );
+    final body = _decodeOrThrow(res);
+    return body['message'] as String;
+  }
+
+  Future<void> login(String appUserId, String signature) async {
+    final res = await http.post(
+      _uri('/auth/login'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'appUserId': appUserId, 'signature': signature}),
+    );
+    final body = _decodeOrThrow(res);
+    accessToken = body['accessToken'] as String;
+    refreshToken = body['refreshToken'] as String;
+  }
+
+  /// Returns false (leaving tokens untouched) rather than throwing on a
+  /// revoked/expired refresh token — callers use this to decide whether to
+  /// fall back to a PIN-triggered full login, not to surface an error.
+  Future<bool> tryRefresh() async {
+    if (refreshToken == null) return false;
+    final res = await http.post(
+      _uri('/auth/refresh'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'refreshToken': refreshToken}),
+    );
+    if (res.statusCode >= 400) return false;
+    final body = _decodeOrThrow(res);
+    accessToken = body['accessToken'] as String;
+    refreshToken = body['refreshToken'] as String;
+    return true;
+  }
+
+  static void clearSession() {
+    accessToken = null;
+    refreshToken = null;
   }
 
   Future<({String challengeId, String message})> requestOwnerProofChallenge(
@@ -90,7 +174,7 @@ class ApiClient {
   ) async {
     final res = await http.post(
       _uri('/users/$appUserId/smart-wallets/owner-proof-challenges'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _jsonHeaders(),
       body: jsonEncode({'currency': currency}),
     );
     final body = _decodeOrThrow(res);
@@ -108,7 +192,7 @@ class ApiClient {
   }) async {
     final res = await http.post(
       _uri('/users/$appUserId/smart-wallets'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _jsonHeaders(),
       body: jsonEncode({
         'currency': currency,
         'ownerProofChallengeId': ownerProofChallengeId,
@@ -119,19 +203,19 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> getOnboardingStatus(String appUserId) async {
-    final res = await http.get(_uri('/users/$appUserId/onboarding/status'));
+    final res = await http.get(_uri('/users/$appUserId/onboarding/status'), headers: _authHeaders());
     return _decodeOrThrow(res);
   }
 
   // --- KYC wizard (Phase 2) ---------------------------------------------
 
   Future<KycOptions> getKycOptions(String appUserId) async {
-    final res = await http.get(_uri('/users/$appUserId/kyc/options'));
+    final res = await http.get(_uri('/users/$appUserId/kyc/options'), headers: _authHeaders());
     return KycOptions.fromJson(_decodeOrThrow(res));
   }
 
   Future<List<KycOccupation>> getKycOccupations(String appUserId, String search) async {
-    final res = await http.get(_uri('/users/$appUserId/kyc/occupations?search=$search'));
+    final res = await http.get(_uri('/users/$appUserId/kyc/occupations?search=$search'), headers: _authHeaders());
     return _decodeListOrThrow(res)
         .map((e) => KycOccupation.fromJson(e as Map<String, dynamic>))
         .toList();
@@ -148,6 +232,7 @@ class ApiClient {
     Map<String, String> fields,
   ) async {
     final request = http.MultipartRequest('POST', _uri(path));
+    request.headers.addAll(_authHeaders());
     request.fields.addAll(fields);
     request.files.add(await http.MultipartFile.fromPath('file', file.path));
     final streamed = await request.send();
@@ -176,19 +261,19 @@ class ApiClient {
   Future<Map<String, dynamic>> patchKyc(String appUserId, Map<String, dynamic> body) async {
     final res = await http.patch(
       _uri('/users/$appUserId/kyc'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _jsonHeaders(),
       body: jsonEncode(body),
     );
     return _decodeOrThrow(res);
   }
 
   Future<KycReadiness> getKycReadiness(String appUserId) async {
-    final res = await http.get(_uri('/users/$appUserId/kyc/readiness'));
+    final res = await http.get(_uri('/users/$appUserId/kyc/readiness'), headers: _authHeaders());
     return KycReadiness.fromJson(_decodeOrThrow(res));
   }
 
   Future<KycReadiness> getUsdReadiness(String appUserId) async {
-    final res = await http.get(_uri('/users/$appUserId/kyc/usd-readiness'));
+    final res = await http.get(_uri('/users/$appUserId/kyc/usd-readiness'), headers: _authHeaders());
     return KycReadiness.fromJson(_decodeOrThrow(res));
   }
 
@@ -203,7 +288,7 @@ class ApiClient {
   }) async {
     final res = await http.post(
       _uri('/users/$appUserId/kyc/activate?currency=$currency'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _jsonHeaders(),
       body: jsonEncode({'sumsubLevelName': sumsubLevelName}),
     );
     return _decodeOrThrow(res);
@@ -218,33 +303,33 @@ class ApiClient {
   }) async {
     final res = await http.post(
       _uri('/users/$appUserId/onboarding/start-nigeria'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _jsonHeaders(),
       body: jsonEncode({'bvn': bvn, 'ngnWalletIndex': ngnWalletIndex}),
     );
     return _decodeOrThrow(res);
   }
 
   Future<Map<String, dynamic>> startUsa(String appUserId) async {
-    final res = await http.post(_uri('/users/$appUserId/onboarding/start-usa'));
+    final res = await http.post(_uri('/users/$appUserId/onboarding/start-usa'), headers: _authHeaders());
     return _decodeOrThrow(res);
   }
 
   Future<Map<String, dynamic>> getVbaUsdStatus(String appUserId) async {
-    final res = await http.get(_uri('/users/$appUserId/vba/usd'));
+    final res = await http.get(_uri('/users/$appUserId/vba/usd'), headers: _authHeaders());
     return _decodeOrThrow(res);
   }
 
   // --- Wallet home (Phase 2: balances + history) --------------------------
 
   Future<List<SmartWallet>> listWallets(String appUserId) async {
-    final res = await http.get(_uri('/users/$appUserId/wallets'));
+    final res = await http.get(_uri('/users/$appUserId/wallets'), headers: _authHeaders());
     return _decodeListOrThrow(res)
         .map((e) => SmartWallet.fromJson(e as Map<String, dynamic>))
         .toList();
   }
 
   Future<List<Balance>> listBalances(String appUserId) async {
-    final res = await http.get(_uri('/users/$appUserId/balances'));
+    final res = await http.get(_uri('/users/$appUserId/balances'), headers: _authHeaders());
     final body = _decodeOrThrow(res);
     return (body['balances'] as List)
         .map((e) => Balance.fromJson(e as Map<String, dynamic>))
@@ -252,7 +337,7 @@ class ApiClient {
   }
 
   Future<List<Transaction>> getTransactions(String appUserId, String smartWalletId) async {
-    final res = await http.get(_uri('/users/$appUserId/wallets/$smartWalletId/transactions'));
+    final res = await http.get(_uri('/users/$appUserId/wallets/$smartWalletId/transactions'), headers: _authHeaders());
     final body = _decodeOrThrow(res);
     return (body['transactions'] as List)
         .map((e) => Transaction.fromJson(e as Map<String, dynamic>))
@@ -264,20 +349,20 @@ class ApiClient {
   Future<void> registerPayTag(String appUserId, String tag) async {
     final res = await http.post(
       _uri('/users/$appUserId/paytag'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _jsonHeaders(),
       body: jsonEncode({'tag': tag}),
     );
     _decodeAnyOrThrow(res);
   }
 
   Future<String?> getMyPayTag(String appUserId) async {
-    final res = await http.get(_uri('/users/$appUserId/paytag'));
+    final res = await http.get(_uri('/users/$appUserId/paytag'), headers: _authHeaders());
     final body = _decodeAnyOrThrow(res);
     return body == null ? null : (body as Map<String, dynamic>)['tag'] as String?;
   }
 
   Future<PayTagUser> resolvePayTag(String tag) async {
-    final res = await http.get(_uri('/paytag/$tag'));
+    final res = await http.get(_uri('/paytag/$tag'), headers: _authHeaders());
     return PayTagUser.fromJson(_decodeOrThrow(res));
   }
 
@@ -298,7 +383,7 @@ class ApiClient {
   }) async {
     final res = await http.post(
       _uri('/users/$appUserId/transfers'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _jsonHeaders(),
       body: jsonEncode({
         if (toBmoniUserId != null) 'toBmoniUserId': toBmoniUserId,
         if (toAddress != null) 'toAddress': toAddress,
@@ -322,6 +407,7 @@ class ApiClient {
     for (var attempt = 0; attempt < maxAttempts; attempt++) {
       final res = await http.get(
         _uri('/users/$appUserId/transfers/$proposalId/sign-payload'),
+        headers: _authHeaders(),
       );
       if (res.statusCode == 409 && attempt < maxAttempts - 1) {
         await Future.delayed(const Duration(milliseconds: 1500));
@@ -335,7 +421,7 @@ class ApiClient {
   Future<Proposal> signTransfer(String appUserId, String proposalId, String signature) async {
     final res = await http.post(
       _uri('/users/$appUserId/transfers/$proposalId/sign'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _jsonHeaders(),
       body: jsonEncode({'signature': signature}),
     );
     return Proposal.fromJson(_decodeOrThrow(res));
@@ -344,14 +430,14 @@ class ApiClient {
   Future<Proposal> rejectTransfer(String appUserId, String proposalId, {String? reason}) async {
     final res = await http.post(
       _uri('/users/$appUserId/transfers/$proposalId/reject'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _jsonHeaders(),
       body: jsonEncode({if (reason != null) 'reason': reason}),
     );
     return Proposal.fromJson(_decodeOrThrow(res));
   }
 
   Future<List<Proposal>> listTransfers(String appUserId, String currency) async {
-    final res = await http.get(_uri('/users/$appUserId/transfers?currency=$currency'));
+    final res = await http.get(_uri('/users/$appUserId/transfers?currency=$currency'), headers: _authHeaders());
     final body = _decodeOrThrow(res);
     return (body['proposals'] as List)
         .map((e) => Proposal.fromJson(e as Map<String, dynamic>))
@@ -367,7 +453,7 @@ class ApiClient {
   }) async {
     final res = await http.post(
       _uri('/users/$appUserId/qr/generate'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _jsonHeaders(),
       body: jsonEncode({'amount': amount, 'currency': currency}),
     );
     final body = _decodeOrThrow(res);
@@ -379,7 +465,7 @@ class ApiClient {
   Future<Proposal> payQr(String appUserId, String token) async {
     final res = await http.post(
       _uri('/users/$appUserId/qr/pay'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _jsonHeaders(),
       body: jsonEncode({'token': token}),
     );
     return Proposal.fromJson(_decodeOrThrow(res));
@@ -401,7 +487,7 @@ class ApiClient {
   }) async {
     final res = await http.post(
       _uri('/users/$appUserId/savings/goals'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _jsonHeaders(),
       body: jsonEncode({
         'name': name,
         'currency': currency,
@@ -414,14 +500,14 @@ class ApiClient {
   }
 
   Future<List<SavingsGoal>> listSavingsGoals(String appUserId) async {
-    final res = await http.get(_uri('/users/$appUserId/savings/goals'));
+    final res = await http.get(_uri('/users/$appUserId/savings/goals'), headers: _authHeaders());
     return _decodeListOrThrow(res)
         .map((e) => SavingsGoal.fromJson(e as Map<String, dynamic>))
         .toList();
   }
 
   Future<List<SavingsContribution>> listDueContributions(String appUserId) async {
-    final res = await http.get(_uri('/users/$appUserId/savings/due'));
+    final res = await http.get(_uri('/users/$appUserId/savings/due'), headers: _authHeaders());
     return _decodeListOrThrow(res)
         .map((e) => SavingsContribution.fromJson(e as Map<String, dynamic>))
         .toList();
@@ -430,6 +516,7 @@ class ApiClient {
   Future<Proposal> payContribution(String appUserId, String contributionId) async {
     final res = await http.post(
       _uri('/users/$appUserId/savings/contributions/$contributionId/pay'),
+      headers: _authHeaders(),
     );
     return Proposal.fromJson(_decodeOrThrow(res));
   }
@@ -443,28 +530,28 @@ class ApiClient {
   }) async {
     final res = await http.post(
       _uri('/users/$appUserId/loans/apply'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _jsonHeaders(),
       body: jsonEncode({'requestedAmount': requestedAmount, 'currency': currency}),
     );
     return LoanApplication.fromJson(_decodeOrThrow(res));
   }
 
   Future<List<LoanApplication>> listLoans(String appUserId) async {
-    final res = await http.get(_uri('/users/$appUserId/loans'));
+    final res = await http.get(_uri('/users/$appUserId/loans'), headers: _authHeaders());
     return _decodeListOrThrow(res)
         .map((e) => LoanApplication.fromJson(e as Map<String, dynamic>))
         .toList();
   }
 
   Future<List<LoanRepayment>> listRepayments(String appUserId, String loanId) async {
-    final res = await http.get(_uri('/users/$appUserId/loans/$loanId/repayments'));
+    final res = await http.get(_uri('/users/$appUserId/loans/$loanId/repayments'), headers: _authHeaders());
     return _decodeListOrThrow(res)
         .map((e) => LoanRepayment.fromJson(e as Map<String, dynamic>))
         .toList();
   }
 
   Future<Proposal> payRepayment(String appUserId, String repaymentId) async {
-    final res = await http.post(_uri('/users/$appUserId/loans/repayments/$repaymentId/pay'));
+    final res = await http.post(_uri('/users/$appUserId/loans/repayments/$repaymentId/pay'), headers: _authHeaders());
     return Proposal.fromJson(_decodeOrThrow(res));
   }
 
@@ -473,7 +560,7 @@ class ApiClient {
   Future<void> setAgentStatus(String appUserId, bool isAgent) async {
     final res = await http.post(
       _uri('/users/$appUserId/agent/status'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _jsonHeaders(),
       body: jsonEncode({'isAgent': isAgent}),
     );
     _decodeAnyOrThrow(res);
@@ -488,7 +575,7 @@ class ApiClient {
   }) async {
     final res = await http.post(
       _uri('/users/$agentAppUserId/agent/cash-in'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _jsonHeaders(),
       body: jsonEncode({
         if (toBmoniUserId != null) 'toBmoniUserId': toBmoniUserId,
         if (toPayTag != null) 'toPayTag': toPayTag,
@@ -508,7 +595,7 @@ class ApiClient {
   }) async {
     final res = await http.post(
       _uri('/users/$customerAppUserId/agent/cash-out'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _jsonHeaders(),
       body: jsonEncode({
         if (agentBmoniUserId != null) 'agentBmoniUserId': agentBmoniUserId,
         if (agentPayTag != null) 'agentPayTag': agentPayTag,
@@ -520,7 +607,7 @@ class ApiClient {
   }
 
   Future<List<AgentTransaction>> listAgentTransactions(String agentAppUserId) async {
-    final res = await http.get(_uri('/users/$agentAppUserId/agent/transactions'));
+    final res = await http.get(_uri('/users/$agentAppUserId/agent/transactions'), headers: _authHeaders());
     return _decodeListOrThrow(res)
         .map((e) => AgentTransaction.fromJson(e as Map<String, dynamic>))
         .toList();
@@ -540,7 +627,7 @@ class ApiClient {
   }) async {
     final res = await http.post(
       _uri('/users/$appUserId/split-bills'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _jsonHeaders(),
       body: jsonEncode({
         'description': description,
         'currency': currency,
@@ -562,19 +649,19 @@ class ApiClient {
   }
 
   Future<List<SplitBill>> listSplitBills(String appUserId) async {
-    final res = await http.get(_uri('/users/$appUserId/split-bills'));
+    final res = await http.get(_uri('/users/$appUserId/split-bills'), headers: _authHeaders());
     return _decodeListOrThrow(res)
         .map((e) => SplitBill.fromJson(e as Map<String, dynamic>))
         .toList();
   }
 
   Future<SplitBill> getSplitBillByToken(String token) async {
-    final res = await http.get(_uri('/split-bills/qr/$token'));
+    final res = await http.get(_uri('/split-bills/qr/$token'), headers: _authHeaders());
     return SplitBill.fromJson(_decodeOrThrow(res));
   }
 
   Future<Proposal> paySplitBillShare(String appUserId, String splitBillId) async {
-    final res = await http.post(_uri('/users/$appUserId/split-bills/$splitBillId/pay'));
+    final res = await http.post(_uri('/users/$appUserId/split-bills/$splitBillId/pay'), headers: _authHeaders());
     return Proposal.fromJson(_decodeOrThrow(res));
   }
 
@@ -600,7 +687,7 @@ class ApiClient {
   }) async {
     final res = await http.post(
       _uri('/users/$appUserId/send-via-link'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _jsonHeaders(),
       body: jsonEncode({
         if (toBmoniUserId != null) 'toBmoniUserId': toBmoniUserId,
         'amount': amount,
@@ -622,12 +709,12 @@ class ApiClient {
   }
 
   Future<ClaimPreview> previewClaim(String token) async {
-    final res = await http.get(_uri('/claim/$token'));
+    final res = await http.get(_uri('/claim/$token'), headers: _authHeaders());
     return ClaimPreview.fromJson(_decodeOrThrow(res));
   }
 
   Future<void> claimLink(String appUserId, String token) async {
-    final res = await http.post(_uri('/users/$appUserId/claim/$token'));
+    final res = await http.post(_uri('/users/$appUserId/claim/$token'), headers: _authHeaders());
     _decodeAnyOrThrow(res);
   }
 }

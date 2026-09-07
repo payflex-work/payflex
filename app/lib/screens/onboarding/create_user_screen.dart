@@ -29,16 +29,21 @@ class _CreateUserScreenState extends State<CreateUserScreen> {
       _error = null;
     });
     try {
-      final user = await _api.createUser(
+      final result = await _api.createUser(
         firstName: _firstName.text.trim(),
         lastName: _lastName.text.trim(),
         email: _email.text.trim(),
         phoneNumber: _phone.text.trim(),
       );
-      await _store.setAppUserId(user.id);
+      await _store.setAppUserId(result.user.id);
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => PinAndWalletScreen(user: user)),
+        MaterialPageRoute(
+          builder: (_) => PinAndWalletScreen(
+            user: result.user,
+            bootstrapToken: result.bootstrapToken,
+          ),
+        ),
       );
     } on ApiException catch (e) {
       setState(() => _error = e.message);

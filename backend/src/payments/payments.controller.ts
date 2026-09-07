@@ -4,11 +4,14 @@ import { CreateDepositAddressDto } from './dto/create-deposit-address.dto';
 import { VerifyNigerianAccountDto } from './dto/verify-nigerian-account.dto';
 import { CreateWithdrawalAccountDto } from './dto/create-withdrawal-account.dto';
 import { WithdrawNigeriaDto } from './dto/withdraw-nigeria.dto';
+import { Public } from '../auth/public.decorator';
 
 @Controller()
 export class PaymentsController {
   constructor(private readonly payments: PaymentsService) {}
 
+  // Public reference data (enabled chains/tokens) — no user context.
+  @Public()
   @Get('deposit/supported-assets')
   supportedAssets() {
     return this.payments.getSupportedDepositAssets();

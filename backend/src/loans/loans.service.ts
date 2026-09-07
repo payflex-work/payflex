@@ -137,7 +137,19 @@ export class LoansService {
     throw new Error(`Sign payload for proposal ${proposalId} never became ready.`);
   }
 
-  async listRepayments(loanApplicationId: string) {
+  /**
+   * The auth guard only verifies the caller IS `appUserId` — it can't
+   * know whether `loanApplicationId` also belongs to them, since that's
+   * a different resource named in the URL. Check it here instead of
+   * trusting the guard for something it was never scoped to catch.
+   */
+  async listRepayments(appUserId: string, loanApplicationId: string) {
+    const loan = await this.prisma.loanApplication.findUnique({
+      where: { id: loanApplicationId },
+    });
+    if (!loan || loan.appUserId !== appUserId) {
+      throw new NotFoundException(`No loan ${loanApplicationId} for this user.`);
+    }
     return this.prisma.loanRepayment.findMany({ where: { loanApplicationId } });
   }
 

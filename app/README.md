@@ -78,6 +78,12 @@ flutter run --dart-define=BACKEND_BASE_URL=http://10.0.2.2:3000
 - `lib/services/local_user_store.dart` persists the local PayFlex user id
   (`SharedPreferences`) so the app skips straight to the wallet home screen
   on relaunch instead of re-running account creation.
+- Every `/users/:id/...` route now requires a valid access token (see
+  "Authentication" below and `../backend/README.md`'s matching section).
+  `lib/services/session_manager.dart` owns the login lifecycle;
+  `ApiClient` attaches `Authorization: Bearer <token>` to every request
+  from a static field, since every screen constructs its own
+  `ApiClient()` instance rather than sharing one.
 
 ## Flow implemented
 
@@ -85,10 +91,13 @@ flutter run --dart-define=BACKEND_BASE_URL=http://10.0.2.2:3000
    posts to the backend's `POST /users`.
 2. `PinAndWalletScreen` — sets a 6-digit PIN (`BmoniEmbeddedSdk.setPin`),
    provisions an on-device owner wallet (`BmoniEmbeddedSdk.initWallet`),
-   registers the address with the backend, lets the user pick a supported
-   stablecoin, requests an owner-proof challenge, signs it on-device
-   (`BmoniEmbeddedSdk.signMessage`), and submits the signature to create
-   the managed smart wallet.
+   registers the address with the backend using the one-time bootstrap
+   token from step 1, **immediately logs in for real**
+   (`SessionManager.login` — the bootstrap token is scoped to that one
+   owner-address call and nothing else), then lets the user pick a
+   supported stablecoin, requests an owner-proof challenge, signs it
+   on-device (`BmoniEmbeddedSdk.signMessage`), and submits the signature
+   to create the managed smart wallet.
 3. `KycWizardScreen` (Phase 2) — personal info + address + employment form,
    camera capture + upload for the identification document, proof of
    address, and a selfie, a readiness check, then KYC activation. Two
@@ -159,6 +168,43 @@ flutter run --dart-define=BACKEND_BASE_URL=http://10.0.2.2:3000
 14. `StubRailsScreen` (Phase 5) — a plain "coming soon" list for
     CAD/EUR/MXN, matching the build brief's own reduced ambition for
     these three rails ("structurally wired but not UI-polished").
+
+## Authentication
+
+The build brief's phases shipped with no auth at all; this closes that gap
+by reusing the on-device EVM owner key every user already has, rather than
+adding a separate password/OTP system. Full design/verification detail is
+in `../backend/README.md`'s "Authentication" section — this is the
+app-side summary.
+
+- **`ApiClient.accessToken`/`refreshToken`** are static fields (not
+  instance fields) because every screen constructs its own `ApiClient()`
+  — an instance field would make a fresh, unauthenticated client on every
+  screen. `SessionManager` is the only thing meant to write them (besides
+  the bootstrap-token special case handled inline in
+  `ApiClient.setOwnerAddress`).
+- **`SessionManager.login(appUserId, pin)`** does the full
+  challenge → on-device sign (`WalletService.signChallenge`) → login, then
+  persists the resulting refresh token to `SharedPreferences` so the next
+  cold start can skip the PIN prompt.
+- **`SessionManager.tryRestoreSession()`** silently exchanges a persisted
+  refresh token for a fresh access/refresh pair — no PIN needed. Returns
+  `false` (session left cleared) if there's no stored token or the backend
+  rejects it, so callers know to fall back to a real login.
+- **`_StartupGate`** (`main.dart`) tries `tryRestoreSession()` first; on
+  failure, it checks whether this device already has a wallet+PIN
+  (`WalletService.hasWallet`/`hasPin`) and, if so, routes to
+  `UnlockScreen` for a PIN-triggered `SessionManager.login`. If neither a
+  session nor a local wallet exists, it falls back to `CreateUserScreen`
+  — `POST /users` is idempotent by phone/email, so this resumes the same
+  backend account rather than forking a new one; it just can't skip the
+  on-device wallet/PIN setup, since a wallet was never created on *this*
+  device to log in with.
+- **No settings/logout UI yet** — `SessionManager.logout()` exists
+  (clears the in-memory tokens and the persisted refresh token) but
+  nothing in the UI calls it. Wiring it up belongs with the "real
+  settings/profile screen" work in `docs/DESIGN_BRIEF.md` section 3, not
+  this pass.
 
 ## Error handling, retry, and offline (Phase 5 polish)
 

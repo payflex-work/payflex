@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { LinksService } from './links.service';
 import { SendViaLinkDto } from './dto/send-via-link.dto';
+import { Public } from '../auth/public.decorator';
 
 @Controller()
 export class LinksController {
@@ -11,7 +12,14 @@ export class LinksController {
     return this.links.sendViaLink(id, dto);
   }
 
-  /** Public claim-landing preview — no auth, matches PayTag resolution's posture in this build. */
+  /**
+   * Public — the whole point of send-via-link is that the recipient may
+   * not have a PayFlex account (or the app installed) yet when they
+   * first open this. Deliberately narrow: amount/currency/sender name/
+   * status only, nothing that would work as a bearer credential on its
+   * own (claiming still requires the token itself via POST below).
+   */
+  @Public()
   @Get('claim/:token')
   previewClaim(@Param('token') token: string) {
     return this.links.previewClaim(token);

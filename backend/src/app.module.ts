@@ -1,9 +1,14 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { APP_GUARD } from '@nestjs/core';
 import bmoniConfig from './config/bmoni.config';
 import { CommonModule } from './common/common.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { RedisModule } from './redis/redis.module';
+import { TokenModule } from './token/token.module';
+import { AuthModule } from './auth/auth.module';
+import { AuthGuard } from './auth/auth.guard';
 import { BmoniModule } from './bmoni/bmoni.module';
 import { UsersModule } from './users/users.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
@@ -25,6 +30,9 @@ import { LinksModule } from './links/links.module';
     ScheduleModule.forRoot(),
     CommonModule,
     PrismaModule,
+    RedisModule,
+    TokenModule,
+    AuthModule,
     BmoniModule,
     UsersModule,
     OnboardingModule,
@@ -40,5 +48,6 @@ import { LinksModule } from './links/links.module';
     SplitBillModule,
     LinksModule,
   ],
+  providers: [{ provide: APP_GUARD, useClass: AuthGuard }],
 })
 export class AppModule {}

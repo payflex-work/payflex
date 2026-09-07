@@ -58,6 +58,7 @@ model AppUser {
   splitBillContributions      SplitBillContributor[]
   claimableLinksSent          ClaimableLink[]         @relation("ClaimableLinksSent")
   claimableLinksClaimed       ClaimableLink[]         @relation("ClaimableLinksClaimed")
+  refreshTokens               RefreshToken[]
 }
 
 model SmartWallet {
@@ -364,4 +365,18 @@ model ClaimableLink {
   expiresAt DateTime
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// Post-launch hardening: API authentication (see src/auth/). Refresh
+// tokens are recorded by their jti (not the token itself) so one can be
+// revoked (e.g. "log out this device") without needing to blacklist a
+// JWT string — checking a row exists and isn't revoked is enough.
+model RefreshToken {
+  id        String   @id @default(uuid())
+  appUserId String
+  appUser   AppUser  @relation(fields: [appUserId], references: [id])
+  jti       String   @unique
+  revoked   Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
 }

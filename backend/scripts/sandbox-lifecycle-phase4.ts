@@ -186,7 +186,7 @@ async function main() {
     );
 
     console.log('\n== 5. Repay the loan (customer signs) ==');
-    const repayments = await loans.listRepayments(approvedLoan.id);
+    const repayments = await loans.listRepayments(customer.appUser.id, approvedLoan.id);
     console.log('repayment due:', repayments[0]);
     const repayProposal = await loans.payRepayment(customer.appUser.id, repayments[0].id);
     const repaySignPayload = await waitForSignPayload(

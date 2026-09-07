@@ -492,6 +492,97 @@ UI-polished"). See findings below for what was and wasn't checked.
   other screen's network calls — that would be straightforward
   copy-paste from here but wasn't judged worth the diff size this pass.
 
+## Authentication (post-launch hardening)
+
+The build brief's five phases shipped with **zero authentication anywhere**
+— every `/users/:id/...` route trusted whatever `:id` was in the URL. That
+was fine for sandbox scripts calling services directly, but unacceptable
+for anything reachable over HTTP: anyone could read or act on any other
+user's account. This closes that gap without inventing a separate
+password/OTP system — it reuses the on-device EVM owner key every user
+already has for BMONI signing.
+
+### Design
+
+- **Challenge-response login**: `POST /auth/challenge {appUserId}` returns
+  a one-time nonce message; the app signs it on-device with
+  `WalletService.signChallenge` (EIP-191 `personal_sign`, the same call
+  used for BMONI owner-proof challenges) and posts the signature to
+  `POST /auth/login`. The backend recovers the signer with
+  `ethers.verifyMessage` and checks it matches the user's registered
+  `ownerAddress`. No new credential for the user to hold — the wallet
+  they already have to sign transfers *is* their login credential.
+- **Three JWT scopes** (`src/token/token.service.ts`): `bootstrap` (10min,
+  one-time), `access` (2h), `refresh` (30d, rotated on every use, revocable
+  via a DB `jti` lookup — `RefreshToken` model). Rotation was verified
+  live: reusing an already-rotated refresh token is rejected with 401.
+- **The bootstrap chicken-and-egg problem**: you need to register an
+  owner address before you can log in, but logging in proves ownership of
+  that same address. Solved with a bootstrap token issued by
+  `POST /users` (public) that is valid for exactly one call —
+  `PATCH /users/:id/owner-address` — and only when the user doesn't
+  already have an address on file (an existing user's re-`POST /users`
+  gets `bootstrapToken: null`, so the endpoint can't be used to hijack an
+  already-claimed account). `AuthGuard` enforces the scope restriction;
+  `UsersService.setOwnerAddress` separately enforces set-once as defense
+  in depth. Both were verified live: a bootstrap token rejected on any
+  other route (403), and a second attempt to set the address rejected
+  (400) even with a correctly-scoped token.
+- **Global guard, opt-out per route**: `AuthGuard` is registered as the
+  `APP_GUARD`, so every route requires a valid `access` token by default;
+  `@Public()` (`src/auth/public.decorator.ts`) opts a handler out
+  explicitly. Ownership is enforced automatically wherever the URL shape
+  is `/users/:id/...` by comparing `:id` to the JWT's `sub` — verified
+  live with two independently-logged-in users, confirming a 403
+  ("You can't act on another user's account") when user B's token is used
+  against user A's `:id`.
+- **Routes with a second id-like param need their own check** — the guard
+  can only see `:id` in the URL, not e.g. `:loanId`. This was actually
+  caught as a real IDOR during this pass:
+  `GET /users/:id/loans/:loanId/repayments` checked the caller *was*
+  `:id` but never checked `:loanId` actually belonged to them — anyone
+  could read another user's loan repayments by supplying their own `:id`
+  with someone else's `:loanId`. Fixed in `LoansService.listRepayments`
+  by threading `appUserId` through and checking `loan.appUserId ===
+  appUserId` explicitly. Worth auditing for the same pattern before
+  adding any future route with more than one id segment.
+- **JWT_SECRET is a plain env var here** — fine for sandbox, not for
+  production. Rotating it logs out every user immediately (all tokens
+  invalidated at once); production should hold it in a KMS/secrets
+  manager, same caveat already on file for `PAYFLEX_TREASURY_*`.
+
+### What was verified live
+
+Every step below was run against the live dev server (not mocked): create
+user → get bootstrap token → confirm unauthenticated access to a
+protected route is rejected (401) → confirm the bootstrap token is
+rejected on a route other than owner-address (403) → set owner address
+with the bootstrap token → confirm a second attempt is rejected (400) →
+request a login challenge → sign it with the same on-device key → log in
+→ use the resulting access token on a protected route (200) → rotate via
+refresh → confirm the old, now-rotated refresh token is rejected (401) →
+create a second user, log them in, and confirm their token is rejected
+against the first user's `:id` (403). `npm run sandbox:phase4` and
+`sandbox:phase5` were re-run after these changes and still pass —
+expected, since those scripts call services directly and never go
+through the HTTP guard.
+
+### Flutter side
+
+`ApiClient` now attaches `Authorization: Bearer <token>` to every request
+(a static field, since every screen constructs its own `ApiClient()`
+instance — see the doc comment on the class). `SessionManager`
+(`app/lib/services/session_manager.dart`) owns the login lifecycle: a
+full `login(appUserId, pin)` (challenge → on-device sign → login),
+`tryRestoreSession()` (silently refreshes from a persisted refresh token,
+no PIN needed), and `logout()`. On cold start, `_StartupGate` tries a
+silent restore first and only falls back to a PIN prompt
+(`UnlockScreen`) if there's no valid session; `PinAndWalletScreen` uses
+the bootstrap token for the one owner-address call and then performs a
+real login immediately afterward, since every route after that (loading
+currencies, the owner-proof challenge, smart wallet creation, KYC) needs
+a proper access token.
+
 ## Testing
 
 ```bash

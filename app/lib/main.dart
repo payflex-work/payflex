@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'services/local_user_store.dart';
 import 'services/api_client.dart';
+import 'services/session_manager.dart';
 import 'services/wallet_service.dart';
 import 'screens/onboarding/create_user_screen.dart';
+import 'screens/unlock_screen.dart';
 import 'screens/wallet_home_screen.dart';
 
 void main() {
@@ -55,21 +57,42 @@ class _StartupGateState extends State<_StartupGate> {
       );
       return;
     }
-    try {
-      final user = await _api.getUser(appUserId);
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => WalletHomeScreen(user: user)),
-      );
-    } catch (_) {
-      // Local id points at a user the backend doesn't know about (e.g.
-      // pointed at a different backend/DB) — fall back to creation
-      // rather than getting stuck on a blank screen.
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const CreateUserScreen()),
-      );
+
+    // Every protected route now needs an access token — try to resume
+    // silently from a persisted refresh token first (no PIN prompt) before
+    // falling back to a PIN-triggered login. See services/session_manager.dart.
+    final restored = await SessionManager.tryRestoreSession();
+    if (restored) {
+      try {
+        final user = await _api.getUser(appUserId);
+        if (!mounted) return;
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => WalletHomeScreen(user: user)),
+        );
+        return;
+      } catch (_) {
+        // Falls through to the PIN/create-user fallback below.
+      }
     }
+
+    final hasWallet = await WalletService.hasWallet();
+    final hasPin = await WalletService.hasPin();
+    if (!mounted) return;
+    if (hasWallet && hasPin) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => UnlockScreen(appUserId: appUserId)),
+      );
+      return;
+    }
+
+    // Local id points at a user with no on-device key yet to log in
+    // with (e.g. onboarding was interrupted, or pointed at a different
+    // backend/DB) — fall back to creation rather than getting stuck on a
+    // blank screen. POST /users is idempotent by phone/email, so this
+    // resumes the same account rather than forking a new one.
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const CreateUserScreen()),
+    );
   }
 
   @override
