@@ -33,7 +33,7 @@ export class WithdrawSafeboxDto {
 
   @IsString()
   @MaxLength(100)
-  note: string; // Required for withdrawal accountability
+  note: string;
 
   @IsString()
   recipientAccountId: string;

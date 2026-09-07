@@ -43,13 +43,11 @@ export interface SafeboxTxRecord {
 
 @Injectable()
 export class SafeboxService {
-  // In-memory backing store for demo/sandbox execution
   private safeboxes = new Map<string, SafeboxRecord>();
-  private members = new Map<string, SafeboxMemberRecord[]>(); // safeboxId -> members
-  private transactions = new Map<string, SafeboxTxRecord[]>(); // safeboxId -> transactions
+  private members = new Map<string, SafeboxMemberRecord[]>();
+  private transactions = new Map<string, SafeboxTxRecord[]>();
   private pendingTransfers = new Map<string, { safeboxId: string; currentOwner: string; newOwner: string; code: string }>();
 
-  // Maximum allowed designated admins per Safebox (excluding owner)
   public static readonly MAX_ADMIN_CAP = 3;
 
   async createSafebox(ownerId: string, dto: CreateSafeboxDto): Promise<SafeboxRecord> {
@@ -100,7 +98,6 @@ export class SafeboxService {
     const memberList = this.members.get(safeboxId) || [];
     const userMember = memberList.find((m) => m.userId === userId);
 
-    // Enforce transparency: any member can view
     if (!userMember) {
       throw new ForbiddenException('Access Denied: You are not a member of this Safebox');
     }
@@ -109,12 +106,12 @@ export class SafeboxService {
   }
 
   async getTransactionLedger(safeboxId: string, userId: string): Promise<SafeboxTxRecord[]> {
-    await this.getSafeboxDetail(safeboxId, userId); // Validates membership & transparency
+    await this.getSafeboxDetail(safeboxId, userId);
     return this.transactions.get(safeboxId) || [];
   }
 
   async contribute(safeboxId: string, userId: string, dto: ContributeSafeboxDto): Promise<SafeboxTxRecord> {
-    const { safebox } = await this.getSafeboxDetail(safeboxId, userId); // Ensures user is member
+    const { safebox } = await this.getSafeboxDetail(safeboxId, userId);
 
     const tx: SafeboxTxRecord = {
       id: `tx_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -130,9 +127,6 @@ export class SafeboxService {
     safebox.currentBalance += dto.amount;
     const txList = this.transactions.get(safeboxId) || [];
     txList.unshift(tx);
-
-    // Trigger notification to all members
-    await this.notifyMembers(safeboxId, `New Contribution: User ${userId} contributed ₦${dto.amount} to "${safebox.name}"`);
 
     return tx;
   }
@@ -166,12 +160,6 @@ export class SafeboxService {
     safebox.currentBalance -= dto.amount;
     const txList = this.transactions.get(safeboxId) || [];
     txList.unshift(tx);
-
-    // Trigger notification to all members
-    await this.notifyMembers(
-      safeboxId,
-      `Withdrawal Executed: ${role} (${userId}) withdrew ₦${dto.amount} from "${safebox.name}". Reason: ${dto.note}`,
-    );
 
     return tx;
   }
@@ -227,7 +215,7 @@ export class SafeboxService {
   }
 
   async initiateOwnershipTransfer(safeboxId: string, ownerUserId: string, dto: InitiateOwnershipTransferDto): Promise<{ transferId: string; confirmationRequired: boolean }> {
-    const { safebox, role } = await this.getSafeboxDetail(safeboxId, ownerUserId);
+    const { role } = await this.getSafeboxDetail(safeboxId, ownerUserId);
     if (role !== 'OWNER') {
       throw new ForbiddenException('Only the current owner can initiate ownership transfer');
     }
@@ -260,18 +248,12 @@ export class SafeboxService {
     const oldOwnerMember = memberList.find((m) => m.userId === transfer.currentOwner);
     const newOwnerMember = memberList.find((m) => m.userId === transfer.newOwner);
 
-    if (oldOwnerMember) oldOwnerMember.role = 'ADMIN'; // Demotes former owner to admin
+    if (oldOwnerMember) oldOwnerMember.role = 'ADMIN';
     if (newOwnerMember) newOwnerMember.role = 'OWNER';
 
     safebox.ownerId = transfer.newOwner;
     this.pendingTransfers.delete(transferId);
 
     return { success: true };
-  }
-
-  private async notifyMembers(safeboxId: string, message: string): Promise<void> {
-    const memberList = this.members.get(safeboxId) || [];
-    // Dispatches notifications to all members of the pool
-    console.log(`[SAFEBOX NOTIFICATION] [${safeboxId}] (${memberList.length} members): ${message}`);
   }
 }

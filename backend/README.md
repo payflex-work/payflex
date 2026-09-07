@@ -1,8 +1,7 @@
 # PayFlex backend (NestJS)
 
-Orchestration service between the Flutter app and the BMONI Embedded API.
-See `../docs/BUILD_PROMPT.md` for the full spec and `../README.md` for the
-project-wide BMONI-vs-PayFlex boundary.
+Orchestration service between the Flutter app and the BMONI Embedded API. See
+`../README.md` for the project-wide BMONI-vs-PayFlex boundary and local setup.
 
 ## Setup
 

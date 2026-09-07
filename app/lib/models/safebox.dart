@@ -20,37 +20,34 @@ enum SafeboxStatus { active, closed }
 
 enum SafeboxTxType { contribution, withdrawal }
 
-class SafeboxMemberModel {
+class SafeboxMember {
   final String id;
   final String safeboxId;
   final String userId;
   final String name;
-  final String avatarUrl;
   final SafeboxRole role;
   final DateTime joinedAt;
 
-  const SafeboxMemberModel({
+  const SafeboxMember({
     required this.id,
     required this.safeboxId,
     required this.userId,
     required this.name,
-    this.avatarUrl = '',
     required this.role,
     required this.joinedAt,
   });
 
-  factory SafeboxMemberModel.fromJson(Map<String, dynamic> json) {
+  factory SafeboxMember.fromJson(Map<String, dynamic> json) {
     SafeboxRole parsedRole = SafeboxRole.member;
     final rStr = (json['role'] as String? ?? 'MEMBER').toUpperCase();
     if (rStr == 'OWNER') parsedRole = SafeboxRole.owner;
     if (rStr == 'ADMIN') parsedRole = SafeboxRole.admin;
 
-    return SafeboxMemberModel(
+    return SafeboxMember(
       id: json['id'] ?? '',
       safeboxId: json['safeboxId'] ?? '',
       userId: json['userId'] ?? '',
       name: json['name'] ?? json['userId'] ?? 'Member',
-      avatarUrl: json['avatarUrl'] ?? '',
       role: parsedRole,
       joinedAt: json['joinedAt'] != null
           ? DateTime.parse(json['joinedAt'])
@@ -59,7 +56,7 @@ class SafeboxMemberModel {
   }
 }
 
-class SafeboxModel {
+class Safebox {
   final String id;
   final String name;
   final String description;
@@ -70,7 +67,7 @@ class SafeboxModel {
   final DateTime createdAt;
   final SafeboxRole userRole;
 
-  const SafeboxModel({
+  const Safebox({
     required this.id,
     required this.name,
     required this.description,
@@ -87,8 +84,8 @@ class SafeboxModel {
     return (currentBalance / targetAmount!).clamp(0.0, 1.0);
   }
 
-  factory SafeboxModel.fromJson(Map<String, dynamic> json, {SafeboxRole role = SafeboxRole.member}) {
-    return SafeboxModel(
+  factory Safebox.fromJson(Map<String, dynamic> json, {SafeboxRole role = SafeboxRole.member}) {
+    return Safebox(
       id: json['id'] ?? '',
       name: json['name'] ?? '',
       description: json['description'] ?? '',
@@ -108,7 +105,7 @@ class SafeboxModel {
   }
 }
 
-class SafeboxTransactionModel {
+class SafeboxTransaction {
   final String id;
   final String safeboxId;
   final String userId;
@@ -119,7 +116,7 @@ class SafeboxTransactionModel {
   final DateTime createdAt;
   final double runningBalance;
 
-  const SafeboxTransactionModel({
+  const SafeboxTransaction({
     required this.id,
     required this.safeboxId,
     required this.userId,
@@ -131,8 +128,8 @@ class SafeboxTransactionModel {
     required this.runningBalance,
   });
 
-  factory SafeboxTransactionModel.fromJson(Map<String, dynamic> json) {
-    return SafeboxTransactionModel(
+  factory SafeboxTransaction.fromJson(Map<String, dynamic> json) {
+    return SafeboxTransaction(
       id: json['id'] ?? '',
       safeboxId: json['safeboxId'] ?? '',
       userId: json['userId'] ?? '',

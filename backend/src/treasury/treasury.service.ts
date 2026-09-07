@@ -8,7 +8,7 @@ import { stablecoinForFiat } from '../common/currency.util';
 /**
  * PayFlex's own BMONI account — a business/platform wallet, not a user
  * wallet. This is the ONE deliberate exception to "never generate/store
- * keys outside bmoni_embedded_sdk" (see docs/BUILD_PROMPT.md section 7):
+ * keys outside bmoni_embedded_sdk" (see the project README):
  * that rule protects END-USER key custody, where signing must happen
  * on-device because only the user should ever be able to authorize their
  * own funds moving. A loan disbursement is the opposite case — it's

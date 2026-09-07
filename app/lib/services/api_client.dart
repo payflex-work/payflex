@@ -8,6 +8,7 @@ import '../models/transfer.dart';
 import '../models/microfinance.dart';
 import '../models/split_bill.dart';
 import '../models/claimable_link.dart';
+import '../models/safebox.dart';
 
 class ApiException implements Exception {
   final int statusCode;
@@ -715,6 +716,103 @@ class ApiClient {
 
   Future<void> claimLink(String appUserId, String token) async {
     final res = await http.post(_uri('/users/$appUserId/claim/$token'), headers: _authHeaders());
+    _decodeAnyOrThrow(res);
+  }
+
+  // --- Safebox Group Savings --------------------------------------------------
+
+  Future<List<({Safebox safebox, String role})>> listSafeboxes() async {
+    final res = await http.get(_uri('/safebox'), headers: _authHeaders());
+    final body = _decodeListOrThrow(res);
+    return body.map((item) {
+      final m = item as Map<String, dynamic>;
+      final sb = Safebox.fromJson(m['safebox'] as Map<String, dynamic>);
+      final r = m['role'] as String? ?? 'MEMBER';
+      return (safebox: sb, role: r);
+    }).toList();
+  }
+
+  Future<Safebox> createSafebox({
+    required String name,
+    required String description,
+    double? targetAmount,
+  }) async {
+    final res = await http.post(
+      _uri('/safebox'),
+      headers: _jsonHeaders(),
+      body: jsonEncode({
+        'name': name,
+        'description': description,
+        if (targetAmount != null) 'targetAmount': targetAmount,
+      }),
+    );
+    return Safebox.fromJson(_decodeOrThrow(res));
+  }
+
+  Future<({Safebox safebox, List<SafeboxMember> members, String role})> getSafeboxDetail(
+      String safeboxId) async {
+    final res = await http.get(_uri('/safebox/$safeboxId'), headers: _authHeaders());
+    final body = _decodeOrThrow(res);
+    final sb = Safebox.fromJson(body['safebox'] as Map<String, dynamic>);
+    final membersList = (body['members'] as List? ?? [])
+        .map((e) => SafeboxMember.fromJson(e as Map<String, dynamic>))
+        .toList();
+    final r = body['role'] as String? ?? 'MEMBER';
+    return (safebox: sb, members: membersList, role: r);
+  }
+
+  Future<List<SafeboxTransaction>> getSafeboxTransactions(String safeboxId) async {
+    final res = await http.get(_uri('/safebox/$safeboxId/transactions'), headers: _authHeaders());
+    final body = _decodeListOrThrow(res);
+    return body.map((e) => SafeboxTransaction.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<SafeboxTransaction> contributeSafebox(
+      String safeboxId, double amount, String? note) async {
+    final res = await http.post(
+      _uri('/safebox/$safeboxId/contribute'),
+      headers: _jsonHeaders(),
+      body: jsonEncode({
+        'amount': amount,
+        if (note != null && note.isNotEmpty) 'note': note,
+      }),
+    );
+    return SafeboxTransaction.fromJson(_decodeOrThrow(res));
+  }
+
+  Future<SafeboxTransaction> withdrawSafebox(
+      String safeboxId, double amount, String note, String recipientAccountId) async {
+    final res = await http.post(
+      _uri('/safebox/$safeboxId/withdraw'),
+      headers: _jsonHeaders(),
+      body: jsonEncode({
+        'amount': amount,
+        'note': note,
+        'recipientAccountId': recipientAccountId,
+      }),
+    );
+    return SafeboxTransaction.fromJson(_decodeOrThrow(res));
+  }
+
+  Future<void> updateSafeboxMemberRole(
+      String safeboxId, String targetUserId, String role) async {
+    final res = await http.put(
+      _uri('/safebox/$safeboxId/members/role'),
+      headers: _jsonHeaders(),
+      body: jsonEncode({
+        'targetUserId': targetUserId,
+        'role': role,
+      }),
+    );
+    _decodeAnyOrThrow(res);
+  }
+
+  Future<void> addSafeboxMember(String safeboxId, String newUserId) async {
+    final res = await http.post(
+      _uri('/safebox/$safeboxId/members'),
+      headers: _jsonHeaders(),
+      body: jsonEncode({'userId': newUserId}),
+    );
     _decodeAnyOrThrow(res);
   }
 }

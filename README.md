@@ -1,84 +1,76 @@
 # PayFlex
 
-A mobile-first microfinance app (in the spirit of Moniepoint / OPay) engineered for seamless offline-capable payments, unified QR transactions, automated Standing Plans, and transparent Safebox group savings. Powered by the **BMONI Embedded API** settlement rail, PayFlex bridges digital banking with local agent networks to ensure reliability across all network conditions.
+PayFlex is a Flutter microfinance application with a NestJS orchestration API.
+It uses **BMONI Embedded** as its only settlement rail for identity, managed
+smart wallets, KYC, and money movement.
 
-Full spec: [`docs/BUILD_PROMPT.md`](docs/BUILD_PROMPT.md). This README tracks what's actually been built against that spec.
-
----
-
-## Architecture & BMONI Settlement Rail
-
-PayFlex uses the **BMONI Embedded API** for identity, managed smart wallets, KYC, and fiat money movement.
-> [!NOTE]
-> BMONI Embedded is **NOT** Stellar-based or crypto-backed — it's EVM-based managed smart wallets (owner-proof challenge + EIP-191 signing) backed by regional stablecoins (`USDB`, `CNGN`, `CADC`, `EURe`, `MEXe`). BMONI is the settlement rail in this build; nothing here talks to Stellar/Horizon/Soroban. The Flutter app goes through the NestJS backend for API calls, and through `bmoni_embedded_sdk` for key generation / signing operations.
+## Architecture
 
 ```
-app/       Flutter mobile app (iOS + Android)
-backend/   NestJS orchestration service — calls BMONI Embedded API
-server/    NestJS Safebox & Payment Step modules
-docs/      Build specs & Payment Flow architecture docs
-infra/     Sandbox reliability scripts & keep-alive tools
+app/       Flutter mobile client (iOS and Android)
+backend/   NestJS API, Prisma schema, BMONI client, and sandbox scripts
+infra/     Local sandbox recovery and keep-alive helpers
 ```
 
----
+BMONI Embedded uses EVM managed wallets, owner-proof challenges, and EIP-191
+signatures with regional stablecoins. It is not a Stellar, Horizon, or Soroban
+integration. The app calls only the PayFlex backend; on-device wallet key
+generation and signing stay in `bmoni_embedded_sdk`.
 
-## Key Features & Capabilities
+## BMONI boundary
 
-- **Unified Payment Step Flow**: Standardized 5-step transaction engine (Review → Authenticate → Submit → Result → Record) with branded progress states and animated confirmation feedback ([Specification](docs/payment-flow.md)).
-- **Safebox Group Savings**: Shared contribution pools featuring full group transaction transparency and server-side permission controls:
-  - Any member can contribute and view the chat-styled transaction ledger.
-  - Server-enforced authorization: **Only owner and designated admins can withdraw funds**.
-  - Server-enforced capacity: **At most 3 designated admins per Safebox** (owner + max 3 admins).
-  - Deliberate 2-step dual-confirmation ownership transfer workflow.
-- **Sandbox Infrastructure & Reliability**: Keep-alive ping mechanism and automated recovery tools ([Infra Docs](infra/sandbox/README.md)).
-- **Lending & Credit Scoring**: Pluggable credit scoring reading BMONI history with server-side treasury disbursement.
-- **Agent Cash-In / Cash-Out**: Agent network reconciliation ledger over BMONI transfers.
-- **PayTag & QR Payments**: PayTag handle directory and HMAC-signed QR payment payloads.
+BMONI provides user identity, owner-wallet proof, managed wallets,
+KYC/onboarding, balances, deposits, payouts, and signed wallet-to-wallet
+proposals. PayFlex adds PayTags and QR payloads, split bills, claimable-link
+escrow, savings goals, credit scoring and loans, agent tracking, and Safebox
+group savings. Safebox is an application ledger and permission model, not a
+BMONI escrow product. Claimable links use a PayFlex treasury escrow and need
+compliance review before production use.
 
----
+## Safebox and payment safety
 
-## Build Status
+Safebox is implemented in `backend/src/safebox` and `app/lib/screens/safebox`.
+Members can contribute; only the owner or a designated admin can withdraw; a
+Safebox may have at most three designated admins. Those limits are enforced on
+the server and covered by backend tests.
 
-| Phase | Status |
-|---|---|
-| 1 — Foundation (user + owner wallet + managed smart wallet) | **Done, verified against live sandbox** |
-| 2 — KYC + onboarding (NGN, USD) | **Done for NGN, verified against live sandbox; USD wired** |
-| 3 — Transfers (QR, PayTag, deposits, NGN withdrawal) | **Transfers/QR/PayTag done, verified against live sandbox** |
-| 4 — Microfinance layer (savings, loans, agent mode) | **Done, verified against live sandbox** |
-| 5 — Polish, Safebox & Payment Step Flow | **Done, Safebox group savings & 5-step payment flow added** |
+Safebox contributions and withdrawals use the shared flow in
+`app/lib/widgets/pf_flow.dart`: review, transaction-PIN authentication,
+submission, terminal result, then ledger refresh. The shared PayFlex token and
+component system is the UI source of truth; it uses restrained elevation only,
+never glow or neon effects.
 
----
+## Development
 
-## Setup & Running Locally
-
-### Backend & Infrastructure Setup
 ```bash
 cd backend
 npm install
 cp .env.example .env
-docker-compose up -d
+docker compose up -d
 npx prisma migrate dev
-npm run start:dev            # backend on :3000
+npm run start:dev
 ```
 
-### Sandbox Recovery & Keep-Alive
-Refer to [infra/sandbox/README.md](infra/sandbox/README.md) for sandbox startup checklists:
-```bash
-bash infra/sandbox/startup.sh
-bash infra/sandbox/keepalive.sh
-```
-
-### Mobile App Setup
 ```bash
 cd app
 flutter pub get
+flutter analyze
+flutter test
 flutter run --dart-define=BACKEND_BASE_URL=http://10.0.2.2:3000
 ```
 
----
+Use `npm run sandbox:safebox` from `backend/` after Postgres and Redis are
+running. Other sandbox scripts and confirmed live-integration findings are in
+[`backend/README.md`](backend/README.md).
 
-## Known Limitations & In-Progress Work
+## Current verification status
 
-- **Betting Funding Page**: Pending regulatory licensing and third-party merchant integration.
-- **Offline Transfer Module**: Protocol scaffolding complete; awaiting extended hardware mesh field testing.
-- **Production Credentials**: Currently executing against the Freebuff Cloud BMONI Sandbox environment; production API keys pending final compliance audit.
+- Backend unit tests: 47 passing across 7 suites.
+- Backend production build: passing.
+- Flutter verification requires a Flutter SDK in the current environment;
+  install/allocate one before treating mobile validation as complete.
+- Production credentials, webhook signing, secret management, and a visual
+  device/emulator review remain deployment prerequisites.
+
+Virtual cards, betting funding, and offline mesh transfers are intentionally
+out of scope until product and compliance specifications exist.

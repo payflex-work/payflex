@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../theme/payflex_tokens.dart';
+import 'pf_motion.dart';
 
 /// Designed empty state — flat line icon in a quiet circle, real copy, an
 /// optional action. Never a bare "No data".
@@ -122,6 +123,28 @@ class PfInlineError extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Compatibility adapters for feature screens added while the design system
+/// was introduced. They retain the branded loading/error behavior.
+class PfLoader extends StatelessWidget {
+  const PfLoader({super.key});
+  @override
+  Widget build(BuildContext context) => const PfBrandedLoader();
+}
+
+class PfErrorState extends StatelessWidget {
+  final String message;
+  final VoidCallback? onRetry;
+  const PfErrorState({super.key, required this.message, this.onRetry});
+  @override
+  Widget build(BuildContext context) => PfEmptyState(
+        icon: Icons.error_outline_rounded,
+        title: 'Couldn\'t load Safeboxes',
+        message: message,
+        actionLabel: onRetry == null ? null : 'Try again',
+        onAction: onRetry,
+      );
 }
 
 enum PfTone { success, info, warn, muted }

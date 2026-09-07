@@ -67,7 +67,8 @@ flutter run --dart-define=BACKEND_BASE_URL=http://10.0.2.2:3000
 
 ## Design system (UI/UX & Motion Design Brief v2)
 
-The visual layer implements `docs/BUILD_PROMPT.md` §9 — "premium private
+The visual layer implements the root README's "Safebox and payment safety"
+guidance — "premium private
 bank meets modern fintech," built off the approved logo (QR-corners +
 flowing-arrow mark, blue→emerald gradient, deep navy base).
 
@@ -252,7 +253,7 @@ app-side summary.
 - **No settings/logout UI yet** — `SessionManager.logout()` exists
   (clears the in-memory tokens and the persisted refresh token) but
   nothing in the UI calls it. Wiring it up belongs with the "real
-  settings/profile screen" work in `docs/DESIGN_BRIEF.md` section 3, not
+  settings/profile screen" work described in the root README, not
   this pass.
 
 ## Error handling, retry, and offline (Phase 5 polish)
@@ -271,7 +272,7 @@ app-side summary.
   attempt at friendlier copy per error type beyond the QR/wallet-home
   offline case above.
 
-## Explicitly deferred (see docs/BUILD_PROMPT.md section 4)
+## Explicitly deferred
 
 NFC and audio-chirp transfer are out of scope for the first working build —
 flagged as future work, not attempted here.

@@ -1,5 +1,5 @@
 /**
- * The build brief (docs/BUILD_PROMPT.md section 6) says BVN verification
+ * The original build brief said BVN verification
  * checks both the number AND the submitted name, and asks for "at least
  * one automated test for the deliberate-mismatch case (valid persona BVN
  * + wrong name)" since it's supposedly deterministic in sandbox.

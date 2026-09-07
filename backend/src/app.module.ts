@@ -24,6 +24,7 @@ import { LoansModule } from './loans/loans.module';
 import { AgentModule } from './agent/agent.module';
 import { SplitBillModule } from './split-bill/split-bill.module';
 import { LinksModule } from './links/links.module';
+import { SafeboxModule } from './safebox/safebox.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { LinksModule } from './links/links.module';
     AgentModule,
     SplitBillModule,
     LinksModule,
+    SafeboxModule,
   ],
   providers: [
     // Order matters: throttling runs before auth so a flood of requests

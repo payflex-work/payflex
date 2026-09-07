@@ -21,6 +21,7 @@ import 'loans/loans_screen.dart';
 import 'agent/agent_screen.dart';
 import 'split_bill/split_bill_screen.dart';
 import 'links/send_via_link_screen.dart';
+import 'safebox/safebox_list_screen.dart';
 import 'stub_rails_screen.dart';
 
 /// Wallet home — the dark navy anchor of the app (design brief §1).
@@ -198,6 +199,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
             surfaceTintColor: Colors.transparent,
             onSelected: (value) {
               final screen = switch (value) {
+                'safebox' => const SafeboxListScreen(),
                 'savings' => SavingsScreen(user: widget.user),
                 'loans' => LoansScreen(user: widget.user),
                 'agent' => AgentScreen(user: widget.user),
@@ -209,6 +211,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
               if (screen != null) _push(screen);
             },
             itemBuilder: (context) => const [
+              PopupMenuItem(value: 'safebox', child: Text('Safebox savings')),
               PopupMenuItem(value: 'savings', child: Text('Savings goals')),
               PopupMenuItem(value: 'loans', child: Text('Loans')),
               PopupMenuItem(value: 'agent', child: Text('Agent mode')),

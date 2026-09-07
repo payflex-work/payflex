@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import '../theme/app_theme.dart';
-import '../services/safebox_service.dart';
-import '../components/primary_button.dart';
+import '../../theme/payflex_tokens.dart';
+import '../../services/api_client.dart';
+import '../../widgets/pf_buttons.dart';
 
-/// Screen to initialize a new group Safebox savings pool.
 class SafeboxCreateScreen extends StatefulWidget {
   const SafeboxCreateScreen({super.key});
 
@@ -16,7 +15,7 @@ class _SafeboxCreateScreenState extends State<SafeboxCreateScreen> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _descController = TextEditingController();
   final TextEditingController _targetController = TextEditingController();
-  final SafeboxService _service = SafeboxService();
+  final ApiClient _api = ApiClient();
 
   bool _isSubmitting = false;
 
@@ -39,7 +38,7 @@ class _SafeboxCreateScreenState extends State<SafeboxCreateScreen> {
         target = double.tryParse(_targetController.text.trim());
       }
 
-      await _service.createSafebox(
+      await _api.createSafebox(
         name: _nameController.text.trim(),
         description: _descController.text.trim(),
         targetAmount: target,
@@ -55,8 +54,8 @@ class _SafeboxCreateScreenState extends State<SafeboxCreateScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(e.toString().replaceAll('Exception: ', '')),
-            backgroundColor: AppColors.error,
+            content: Text(e.toString().replaceAll('ApiException: ', '')),
+            backgroundColor: PayFlexColors.error,
           ),
         );
       }
@@ -67,14 +66,12 @@ class _SafeboxCreateScreenState extends State<SafeboxCreateScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Create New Safebox'),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppSpacing.lg),
+        padding: const EdgeInsets.all(PayFlexSpacing.lg),
         child: Form(
           key: _formKey,
           child: Column(
@@ -82,21 +79,19 @@ class _SafeboxCreateScreenState extends State<SafeboxCreateScreen> {
             children: [
               Text(
                 'Group Savings Pool Details',
-                style: AppTypography.heading1,
+                style: PayFlexTypography.heading1,
               ),
-              const SizedBox(height: AppSpacing.xs),
+              const SizedBox(height: PayFlexSpacing.xs),
               Text(
                 'Safebox pools are transparent to all members. Anyone can contribute, but only you (and designated admins) can withdraw.',
-                style: AppTypography.bodySmall,
+                style: PayFlexTypography.bodySmall,
               ),
-              const SizedBox(height: AppSpacing.xl),
-
-              // Name Field
+              const SizedBox(height: PayFlexSpacing.xl),
               Text(
                 'Safebox Name',
-                style: AppTypography.body.copyWith(fontWeight: FontWeight.w600),
+                style: PayFlexTypography.body.copyWith(fontWeight: FontWeight.bold),
               ),
-              const SizedBox(height: AppSpacing.xs),
+              const SizedBox(height: PayFlexSpacing.xs),
               TextFormField(
                 controller: _nameController,
                 validator: (val) {
@@ -106,17 +101,15 @@ class _SafeboxCreateScreenState extends State<SafeboxCreateScreen> {
                   return null;
                 },
                 decoration: const InputDecoration(
-                  hintText: 'e.g. Vacation 2026, House Rent Pool',
+                  hintText: 'e.g. Kenya Trip 2026, House Rent Pool',
                 ),
               ),
-              const SizedBox(height: AppSpacing.lg),
-
-              // Description Field
+              const SizedBox(height: PayFlexSpacing.lg),
               Text(
                 'Description / Purpose',
-                style: AppTypography.body.copyWith(fontWeight: FontWeight.w600),
+                style: PayFlexTypography.body.copyWith(fontWeight: FontWeight.bold),
               ),
-              const SizedBox(height: AppSpacing.xs),
+              const SizedBox(height: PayFlexSpacing.xs),
               TextFormField(
                 controller: _descController,
                 maxLines: 3,
@@ -130,14 +123,12 @@ class _SafeboxCreateScreenState extends State<SafeboxCreateScreen> {
                   hintText: 'Describe who this pool is for and how funds will be used.',
                 ),
               ),
-              const SizedBox(height: AppSpacing.lg),
-
-              // Optional Target Amount
+              const SizedBox(height: PayFlexSpacing.lg),
               Text(
                 'Target Amount (Optional)',
-                style: AppTypography.body.copyWith(fontWeight: FontWeight.w600),
+                style: PayFlexTypography.body.copyWith(fontWeight: FontWeight.bold),
               ),
-              const SizedBox(height: AppSpacing.xs),
+              const SizedBox(height: PayFlexSpacing.xs),
               TextFormField(
                 controller: _targetController,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -146,9 +137,8 @@ class _SafeboxCreateScreenState extends State<SafeboxCreateScreen> {
                   hintText: '0.00',
                 ),
               ),
-              const SizedBox(height: AppSpacing.xxl),
-
-              PrimaryButton(
+              const SizedBox(height: PayFlexSpacing.xxl),
+              PfPrimaryButton(
                 label: 'Create Safebox',
                 fullWidth: true,
                 isLoading: _isSubmitting,
