@@ -550,6 +550,21 @@ already has for BMONI signing.
   production. Rotating it logs out every user immediately (all tokens
   invalidated at once); production should hold it in a KMS/secrets
   manager, same caveat already on file for `PAYFLEX_TREASURY_*`.
+- **Rate limiting** (`@nestjs/throttler`, `app.module.ts`): a 60
+  requests/min-per-IP global default, generous enough for normal polling
+  (onboarding status, wallet balances), guards every route by running
+  before `AuthGuard` — a flood gets rejected with 429 before auth logic
+  even runs. `AuthController`'s three routes override this with much
+  tighter, independent per-route limits since they're the ones reachable
+  pre-auth and worth brute-forcing: `/auth/login` 5/min (each attempt is
+  a distinct signature-verification cost, and a real client only ever
+  needs one), `/auth/challenge` and `/auth/refresh` 10/min. Verified live:
+  hammering `/auth/login` 7 times in a row gets exactly 5 through before
+  429s start, and tripping that limit doesn't affect the independent
+  `/auth/challenge` bucket. No config needed — `ThrottlerModule` keeps
+  counters in memory per process, fine for a single instance; a multi-
+  instance deployment would need a shared store (e.g. Redis, which this
+  app already depends on for challenge storage) instead.
 
 ### What was verified live
 

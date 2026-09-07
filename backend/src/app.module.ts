@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import bmoniConfig from './config/bmoni.config';
 import { CommonModule } from './common/common.module';
@@ -28,6 +29,11 @@ import { LinksModule } from './links/links.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true, load: [bmoniConfig] }),
     ScheduleModule.forRoot(),
+    // Global default: 60 requests/min per IP, generous enough for normal
+    // polling (onboarding status, wallet balances) — stricter per-route
+    // limits (see AuthController) override this for brute-forceable
+    // endpoints like /auth/challenge and /auth/login.
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }]),
     CommonModule,
     PrismaModule,
     RedisModule,
@@ -48,6 +54,11 @@ import { LinksModule } from './links/links.module';
     SplitBillModule,
     LinksModule,
   ],
-  providers: [{ provide: APP_GUARD, useClass: AuthGuard }],
+  providers: [
+    // Order matters: throttling runs before auth so a flood of requests
+    // gets rate-limited before reaching AuthGuard's logic at all.
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: AuthGuard },
+  ],
 })
 export class AppModule {}
