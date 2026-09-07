@@ -1,0 +1,67 @@
+// Additive Prisma Schema Additions for Safebox Group Savings Module
+
+enum SafeboxMemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum SafeboxStatus {
+  ACTIVE
+  CLOSED
+}
+
+enum SafeboxTransactionType {
+  CONTRIBUTION
+  WITHDRAWAL
+}
+
+enum SafeboxTransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+model Safebox {
+  id             String               @id @default(uuid())
+  name           String
+  description    String
+  ownerId        String
+  targetAmount   Float?
+  currentBalance Float                @default(0.0)
+  status         SafeboxStatus        @default(ACTIVE)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  members        SafeboxMember[]
+  transactions   SafeboxTransaction[]
+
+  @@map("safeboxes")
+}
+
+model SafeboxMember {
+  id        String            @id @default(uuid())
+  safeboxId String
+  userId    String
+  role      SafeboxMemberRole @default(MEMBER)
+  joinedAt  DateTime          @default(now())
+
+  safebox Safebox @relation(fields: [safeboxId], references: [id], onDelete: Cascade)
+
+  @@unique([safeboxId, userId])
+  @@map("safebox_members")
+}
+
+model SafeboxTransaction {
+  id        String                   @id @default(uuid())
+  safeboxId String
+  userId    String
+  type      SafeboxTransactionType
+  amount    Float
+  note      String?
+  status    SafeboxTransactionStatus @default(COMPLETED)
+  createdAt DateTime                 @default(now())
+
+  safebox Safebox @relation(fields: [safeboxId], references: [id], onDelete: Cascade)
+
+  @@map("safebox_transactions")
+}
