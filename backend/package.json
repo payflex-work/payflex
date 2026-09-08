@@ -23,7 +23,8 @@
     "sandbox:phase4": "ts-node -r tsconfig-paths/register scripts/sandbox-lifecycle-phase4.ts",
     "sandbox:phase5": "ts-node -r tsconfig-paths/register scripts/sandbox-lifecycle-phase5.ts",
     "sandbox:safebox": "ts-node -r tsconfig-paths/register scripts/sandbox-lifecycle-safebox.ts",
-    "provision:treasury": "ts-node -r tsconfig-paths/register scripts/provision-treasury.ts"
+    "provision:treasury": "ts-node -r tsconfig-paths/register scripts/provision-treasury.ts",
+    "verify:offline": "ts-node -r tsconfig-paths/register scripts/verify-offline-protocol.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.0",

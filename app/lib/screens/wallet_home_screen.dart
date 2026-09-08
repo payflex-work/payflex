@@ -23,6 +23,7 @@ import 'split_bill/split_bill_screen.dart';
 import 'links/send_via_link_screen.dart';
 import 'safebox/safebox_list_screen.dart';
 import 'stub_rails_screen.dart';
+import '../services/offline_redemption_service.dart';
 
 /// Wallet home — the dark navy anchor of the app (design brief §1).
 /// Layout, top to bottom: greeting header with the brand lockup and
@@ -94,6 +95,28 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
           recent = [];
         }
       }
+
+      // Merge local offline transactions
+      try {
+        final offlineRecords = await OfflineRedemptionService().loadRecords();
+        for (final rec in offlineRecords) {
+          final alreadyPresent = recent.any((t) => t.id == rec.authorizationId || (rec.proposalId != null && t.id == rec.proposalId));
+          if (!alreadyPresent) {
+            recent.insert(
+              0,
+              Transaction(
+                id: rec.authorizationId,
+                amount: rec.amountDecimal,
+                currency: rec.currency,
+                direction: 'OUT',
+                status: rec.status == RedemptionStatus.settled ? 'SETTLED' : 'VERIFIED (PENDING)',
+                createdAt: rec.createdAt.toIso8601String(),
+              ),
+            );
+          }
+        }
+      } catch (_) {}
+
       setState(() {
         _wallets = wallets;
         _balancesByWalletId = balanceMap;

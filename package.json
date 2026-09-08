@@ -8,6 +8,7 @@
     "dev": "npm --prefix backend run start:dev",
     "build": "npm --prefix backend run build",
     "start": "npm --prefix backend run start:prod",
-    "typecheck": "npm --prefix backend exec tsc -- --noEmit -p tsconfig.json"
+    "typecheck": "npm --prefix backend exec tsc -- --noEmit -p tsconfig.json",
+    "verify:offline": "npm --prefix backend run verify:offline"
   }
 }
