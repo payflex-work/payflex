@@ -22,6 +22,10 @@ import 'agent/agent_screen.dart';
 import 'split_bill/split_bill_screen.dart';
 import 'links/send_via_link_screen.dart';
 import 'safebox/safebox_list_screen.dart';
+import 'standing_plans/standing_plans_screen.dart';
+import 'admin_screen.dart';
+import 'virtual_card_screen.dart';
+import 'betting_screen.dart';
 import 'stub_rails_screen.dart';
 import '../services/offline_redemption_service.dart';
 
@@ -223,6 +227,10 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
             onSelected: (value) {
               final screen = switch (value) {
                 'safebox' => const SafeboxListScreen(),
+                'standing-plans' => StandingPlansScreen(user: widget.user),
+                'admin' => AdminScreen(user: widget.user),
+                'virtual-card' => const VirtualCardScreen(),
+                'betting' => const BettingScreen(),
                 'savings' => SavingsScreen(user: widget.user),
                 'loans' => LoansScreen(user: widget.user),
                 'agent' => AgentScreen(user: widget.user),
@@ -235,6 +243,10 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
             },
             itemBuilder: (context) => const [
               PopupMenuItem(value: 'safebox', child: Text('Safebox savings')),
+              PopupMenuItem(value: 'standing-plans', child: Text('Standing plans')),
+              PopupMenuItem(value: 'virtual-card', child: Text('Virtual card')),
+              PopupMenuItem(value: 'betting', child: Text('Betting funding')),
+              PopupMenuItem(value: 'admin', child: Text('Admin')),
               PopupMenuItem(value: 'savings', child: Text('Savings goals')),
               PopupMenuItem(value: 'loans', child: Text('Loans')),
               PopupMenuItem(value: 'agent', child: Text('Agent mode')),

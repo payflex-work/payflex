@@ -41,6 +41,14 @@ model AppUser {
   // become an agent (see AgentService.setAgentStatus).
   isAgent       Boolean  @default(false)
 
+  // Admin access — unlike isAgent, this is NOT self-service: only an
+  // existing admin can promote another user (AdminService.setAdminStatus,
+  // AdminGuard-protected), and the very first admin is bootstrapped
+  // out-of-band via `npm run provision:admin` (same pattern as
+  // PAYFLEX_TREASURY_* — see scripts/provision-admin.ts), never through
+  // a public endpoint.
+  isAdmin       Boolean  @default(false)
+
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -62,6 +70,7 @@ model AppUser {
   safeboxesOwned              Safebox[]
   safeboxMemberships          SafeboxMember[]
   safeboxTransactions         SafeboxTransaction[]
+  standingPlans               StandingPlan[]
 }
 
 model SmartWallet {
@@ -263,6 +272,49 @@ model LoanRepayment {
   status          String    @default("DUE") // DUE | PROPOSED | PAID
   bmoniProposalId String?
   paidAt          DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Standing Plans: recurring transfers to a chosen recipient (unlike
+// SavingsGoal, which always pays into PayFlex's own treasury, this is
+// PayFlex's own scheduled-payment layer — BMONI has no recurring-payment
+// or delegated-debit primitive). Same honest limitation as SavingsGoal:
+// the scheduler can only ever mark a payment DUE, never execute it
+// unattended — every transfer needs the user's live on-device signature.
+model StandingPlan {
+  id        String  @id @default(uuid())
+  appUserId String
+  appUser   AppUser @relation(fields: [appUserId], references: [id])
+
+  name          String
+  currency      String
+  amount        String
+  frequency     String // "DAILY" | "WEEKLY" | "MONTHLY"
+  toBmoniUserId String?
+  toPayTag      String?
+  description   String?
+  nextPaymentAt DateTime
+  status        String @default("ACTIVE") // ACTIVE | PAUSED | CANCELLED
+  totalPaid     String @default("0")
+
+  payments StandingPlanPayment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model StandingPlanPayment {
+  id             String       @id @default(uuid())
+  standingPlanId String
+  standingPlan   StandingPlan @relation(fields: [standingPlanId], references: [id])
+
+  amount          String
+  status          String    @default("DUE") // DUE | PROPOSED | CONFIRMED | FAILED
+  bmoniProposalId String?
+  dueAt           DateTime
+  completedAt     DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

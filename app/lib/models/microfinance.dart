@@ -109,6 +109,71 @@ class LoanRepayment {
       );
 }
 
+class StandingPlan {
+  final String id;
+  final String name;
+  final String currency;
+  final String amount;
+  final String frequency;
+  final String? toBmoniUserId;
+  final String? toPayTag;
+  final String? description;
+  final String status;
+  final String totalPaid;
+
+  StandingPlan({
+    required this.id,
+    required this.name,
+    required this.currency,
+    required this.amount,
+    required this.frequency,
+    this.toBmoniUserId,
+    this.toPayTag,
+    this.description,
+    required this.status,
+    required this.totalPaid,
+  });
+
+  factory StandingPlan.fromJson(Map<String, dynamic> json) => StandingPlan(
+        id: json['id'] as String,
+        name: json['name'] as String,
+        currency: json['currency'] as String,
+        amount: json['amount'] as String,
+        frequency: json['frequency'] as String,
+        toBmoniUserId: json['toBmoniUserId'] as String?,
+        toPayTag: json['toPayTag'] as String?,
+        description: json['description'] as String?,
+        status: json['status'] as String,
+        totalPaid: json['totalPaid'] as String,
+      );
+}
+
+class StandingPlanPayment {
+  final String id;
+  final String amount;
+  final String status;
+  final String dueAt;
+  final StandingPlan? plan;
+
+  StandingPlanPayment({
+    required this.id,
+    required this.amount,
+    required this.status,
+    required this.dueAt,
+    this.plan,
+  });
+
+  factory StandingPlanPayment.fromJson(Map<String, dynamic> json) => StandingPlanPayment(
+        id: json['id'] as String,
+        amount: json['amount'] as String,
+        status: json['status'] as String,
+        dueAt: json['dueAt'] as String,
+        plan: json['standingPlan'] != null
+            ? StandingPlan.fromJson(json['standingPlan'] as Map<String, dynamic>)
+            : null,
+      );
+}
+
 class AgentTransaction {
   final String id;
   final String type;

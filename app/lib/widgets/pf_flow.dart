@@ -6,7 +6,6 @@ import '../utils/money.dart';
 import 'pf_balance_card.dart';
 import 'pf_buttons.dart';
 import 'pf_mark.dart';
-import 'pf_motion.dart';
 import 'pf_states.dart';
 
 /// Everything a completed money flow needs to render its payoff: the

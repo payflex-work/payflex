@@ -6,7 +6,6 @@ import '../../services/api_client.dart';
 import '../../widgets/pf_balance_card.dart';
 import '../../widgets/pf_buttons.dart';
 import '../../widgets/pf_motion.dart';
-import '../../widgets/pf_states.dart';
 
 class SafeboxManageMembersScreen extends StatefulWidget {
   final String safeboxId;

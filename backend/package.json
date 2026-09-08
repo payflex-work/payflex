@@ -23,7 +23,9 @@
     "sandbox:phase4": "ts-node -r tsconfig-paths/register scripts/sandbox-lifecycle-phase4.ts",
     "sandbox:phase5": "ts-node -r tsconfig-paths/register scripts/sandbox-lifecycle-phase5.ts",
     "sandbox:safebox": "ts-node -r tsconfig-paths/register scripts/sandbox-lifecycle-safebox.ts",
+    "sandbox:standing-plans": "ts-node -r tsconfig-paths/register scripts/sandbox-standing-plans.ts",
     "provision:treasury": "ts-node -r tsconfig-paths/register scripts/provision-treasury.ts",
+    "provision:admin": "ts-node -r tsconfig-paths/register scripts/provision-admin.ts",
     "verify:offline": "ts-node -r tsconfig-paths/register scripts/verify-offline-protocol.ts"
   },
   "dependencies": {

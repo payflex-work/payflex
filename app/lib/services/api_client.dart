@@ -522,6 +522,94 @@ class ApiClient {
     return Proposal.fromJson(_decodeOrThrow(res));
   }
 
+  // --- Standing Plans ----------------------------------------------------------
+  //
+  // Recurring transfers to a chosen recipient — unlike a savings goal
+  // (which always pays into PayFlex's treasury), a standing plan pays out
+  // to a PayTag or bmoniUserId. Same honest limitation as everything else
+  // in this app: the backend can only ever mark a payment DUE, never
+  // execute it unattended (no delegated-debit primitive in BMONI) — a
+  // due payment's "pay" call returns the same Proposal shape every other
+  // transfer does, sign/submit it via the normal transfer endpoints.
+
+  Future<StandingPlan> createStandingPlan(
+    String appUserId, {
+    required String name,
+    required String currency,
+    required String amount,
+    required String frequency, // "DAILY" | "WEEKLY" | "MONTHLY"
+    String? toBmoniUserId,
+    String? toPayTag,
+    String? description,
+  }) async {
+    final res = await http.post(
+      _uri('/users/$appUserId/standing-plans'),
+      headers: _jsonHeaders(),
+      body: jsonEncode({
+        'name': name,
+        'currency': currency,
+        'amount': amount,
+        'frequency': frequency,
+        if (toBmoniUserId != null) 'toBmoniUserId': toBmoniUserId,
+        if (toPayTag != null) 'toPayTag': toPayTag,
+        if (description != null) 'description': description,
+      }),
+    );
+    return StandingPlan.fromJson(_decodeOrThrow(res));
+  }
+
+  Future<List<StandingPlan>> listStandingPlans(String appUserId) async {
+    final res = await http.get(_uri('/users/$appUserId/standing-plans'), headers: _authHeaders());
+    return _decodeListOrThrow(res)
+        .map((e) => StandingPlan.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<List<StandingPlanPayment>> listDueStandingPlanPayments(String appUserId) async {
+    final res = await http.get(_uri('/users/$appUserId/standing-plans/due'), headers: _authHeaders());
+    return _decodeListOrThrow(res)
+        .map((e) => StandingPlanPayment.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> setStandingPlanStatus(
+    String appUserId,
+    String planId,
+    String status, // "ACTIVE" | "PAUSED" | "CANCELLED"
+  ) async {
+    final res = await http.put(
+      _uri('/users/$appUserId/standing-plans/$planId/status'),
+      headers: _jsonHeaders(),
+      body: jsonEncode({'status': status}),
+    );
+    _decodeAnyOrThrow(res);
+  }
+
+  Future<Proposal> payStandingPlanPayment(String appUserId, String paymentId) async {
+    final res = await http.post(
+      _uri('/users/$appUserId/standing-plans/payments/$paymentId/pay'),
+      headers: _authHeaders(),
+    );
+    return Proposal.fromJson(_decodeOrThrow(res));
+  }
+
+  // --- Admin ---------------------------------------------------------------------
+  //
+  // Every call here needs the caller's own access token to already carry
+  // isAdmin (see backend/src/admin/admin.guard.ts) — there is no
+  // client-side gate, the backend rejects a non-admin with 403 regardless
+  // of what this screen shows.
+
+  Future<Map<String, dynamic>> getAdminStats() async {
+    final res = await http.get(_uri('/admin/stats'), headers: _authHeaders());
+    return _decodeOrThrow(res);
+  }
+
+  Future<Map<String, dynamic>> triggerSavingsDueCheck() async {
+    final res = await http.post(_uri('/savings/run-due-check'), headers: _authHeaders());
+    return _decodeOrThrow(res);
+  }
+
   // --- Loans (Phase 4) -------------------------------------------------------
 
   Future<LoanApplication> applyForLoan(
