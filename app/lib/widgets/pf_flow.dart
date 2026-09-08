@@ -6,6 +6,7 @@ import '../utils/money.dart';
 import 'pf_balance_card.dart';
 import 'pf_buttons.dart';
 import 'pf_mark.dart';
+import 'pf_motion.dart';
 import 'pf_states.dart';
 
 /// Everything a completed money flow needs to render its payoff: the
@@ -528,7 +529,7 @@ class _PfPaymentConfirmationSheetState extends State<PfPaymentConfirmationSheet>
           ] else if (_step == 1) ...[
             const Text('Confirm this payment with your transaction PIN.'),
             const SizedBox(height: PfSpace.md),
-            TextField(controller: _pin, keyboardType: TextInputType.number, obscureText: true, maxLength: 4, decoration: const InputDecoration(labelText: 'Transaction PIN')),
+            TextField(controller: _pin, keyboardType: TextInputType.number, obscureText: true, maxLength: 6, decoration: const InputDecoration(labelText: 'Transaction PIN')),
             if (_error != null) Padding(padding: const EdgeInsets.only(top: PfSpace.sm), child: PfInlineError(message: _error!)),
           ] else const Center(child: Padding(padding: EdgeInsets.all(PfSpace.xl), child: PfBrandedLoader())),
           if (_step != 2) ...[const SizedBox(height: PfSpace.lg), PfPrimaryButton(label: _step == 0 ? 'Confirm & pay' : 'Authorize & submit', onPressed: _continue)],

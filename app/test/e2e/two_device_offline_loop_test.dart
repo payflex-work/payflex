@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:payflex/models/transfer.dart';
 import 'package:payflex/protocol/crypto_utils.dart';
 import 'package:payflex/protocol/fountain_coder.dart';
@@ -75,6 +76,9 @@ class MockSettlementApiClient extends ApiClient {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  SharedPreferences.setMockInitialValues({});
+
   group('E2E Two-Device Offline Payment & Reconciliation Loop', () {
     // Device A (Receiver / Merchant: Amina Cafe)
     final deviceASeed = CryptoUtils.generateEd25519Seed();
@@ -91,9 +95,11 @@ void main() {
       // STAGE 1: Payer (Device B) provisions an Offline Reserve while online
       // -----------------------------------------------------------------------
       final payerReserveStorage = <String, String>{};
-      final payerReserveService = OfflineReserveService()
-        ..storageGetHook = (k) async => payerReserveStorage[k]
-        ..storageSetHook = (k, v) async => payerReserveStorage[k] = v;
+      final payerReserveService = OfflineReserveService();
+      payerReserveService.storageGetHook = (k) async => payerReserveStorage[k];
+      payerReserveService.storageSetHook = (k, v) async {
+        payerReserveStorage[k] = v;
+      };
 
       final allowance = await payerReserveService.provisionAllowance(
         appUserId: payerAppUserId,

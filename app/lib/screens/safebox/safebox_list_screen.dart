@@ -201,7 +201,7 @@ class _SafeboxListScreenState extends State<SafeboxListScreen> {
                       Text('Pool Balance', style: PayFlexTypography.caption),
                       const SizedBox(height: 2),
                       Text(
-                        formatMoney(sb.currentBalance),
+                        formatMoneyValue(sb.currentBalance, 'NGN'),
                         style: PayFlexTypography.heading1.copyWith(
                           color: PayFlexColors.primaryGreen,
                         ),
@@ -215,7 +215,7 @@ class _SafeboxListScreenState extends State<SafeboxListScreen> {
                         Text('Target Goal', style: PayFlexTypography.caption),
                         const SizedBox(height: 2),
                         Text(
-                          formatMoney(sb.targetAmount!),
+                          formatMoneyValue(sb.targetAmount!, 'NGN'),
                           style: PayFlexTypography.heading2,
                         ),
                       ],

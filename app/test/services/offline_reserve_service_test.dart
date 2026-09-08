@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:payflex/protocol/crypto_utils.dart';
 import 'package:payflex/protocol/payment_protocol.dart';
@@ -15,9 +14,11 @@ void main() {
 
     setUp(() {
       mockStorage.clear();
-      service = OfflineReserveService()
-        ..storageGetHook = (k) async => mockStorage[k]
-        ..storageSetHook = (k, v) async => mockStorage[k] = v;
+      service = OfflineReserveService();
+      service.storageGetHook = (k) async => mockStorage[k];
+      service.storageSetHook = (k, v) async {
+        mockStorage[k] = v;
+      };
 
       DeviceKeyService.setMockSeed(payerSeed);
     });

@@ -140,8 +140,7 @@ class _SafeboxCreateScreenState extends State<SafeboxCreateScreen> {
               const SizedBox(height: PayFlexSpacing.xxl),
               PfPrimaryButton(
                 label: 'Create Safebox',
-                fullWidth: true,
-                isLoading: _isSubmitting,
+                busy: _isSubmitting,
                 onPressed: _handleCreate,
               ),
             ],

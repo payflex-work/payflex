@@ -91,8 +91,13 @@ void main() {
     });
 
     test('Decoder rejects frames from different sessions', () {
-      final encoder1 = FountainEncoder.fromString('Session 1 Data', sessionId: '111111', blockSize: 16);
-      final encoder2 = FountainEncoder.fromString('Session 2 Data', sessionId: '222222', blockSize: 16);
+      // blockSize is deliberately small enough that k > 1 for this payload
+      // — with k == 1 the very first (systematic) frame fully solves and
+      // completes the decode, and addPacket's `if (_complete) return true`
+      // fast path then short-circuits before the session check ever runs
+      // on a second frame, making this test pass for the wrong reason.
+      final encoder1 = FountainEncoder.fromString('Session 1 Data', sessionId: '111111', blockSize: 4);
+      final encoder2 = FountainEncoder.fromString('Session 2 Data', sessionId: '222222', blockSize: 4);
 
       final decoder = FountainDecoder();
 

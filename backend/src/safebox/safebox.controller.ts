@@ -5,7 +5,6 @@ import {
   Put,
   Body,
   Param,
-  Headers,
   Req,
   HttpCode,
   HttpStatus,
@@ -28,125 +27,106 @@ import {
   ConfirmOwnershipTransferDto,
 } from './dto/safebox.dto';
 
+/**
+ * Not `@Public()`, so the global AuthGuard (see auth/auth.guard.ts)
+ * always either populates `request.user` from a verified access token or
+ * rejects the request before any handler here runs — `req.user.appUserId`
+ * is the caller's real, authenticated identity, never a value a client
+ * can influence directly.
+ */
 @Controller('safebox')
 @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
 export class SafeboxController {
   constructor(private readonly safeboxService: SafeboxService) {}
 
-  private getUserId(req: Request, headers: Record<string, string>): string {
-    const user = (req as any).user;
-    return user?.appUserId || headers['x-user-id'] || 'usr_default';
+  private getUserId(req: Request): string {
+    return (req as Request & { user: { appUserId: string } }).user.appUserId;
   }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async createSafebox(
-    @Req() req: Request,
-    @Headers() headers: Record<string, string>,
-    @Body() dto: CreateSafeboxDto,
-  ): Promise<SafeboxRecord> {
-    const userId = this.getUserId(req, headers);
-    return this.safeboxService.createSafebox(userId, dto);
+  async createSafebox(@Req() req: Request, @Body() dto: CreateSafeboxDto): Promise<SafeboxRecord> {
+    return this.safeboxService.createSafebox(this.getUserId(req), dto);
   }
 
   @Get()
-  async getUserSafeboxes(
-    @Req() req: Request,
-    @Headers() headers: Record<string, string>,
-  ): Promise<{ safebox: SafeboxRecord; role: string }[]> {
-    const userId = this.getUserId(req, headers);
-    return this.safeboxService.getUserSafeboxes(userId);
+  async getUserSafeboxes(@Req() req: Request): Promise<{ safebox: SafeboxRecord; role: string }[]> {
+    return this.safeboxService.getUserSafeboxes(this.getUserId(req));
   }
 
   @Get(':safeboxId')
   async getSafeboxDetail(
     @Req() req: Request,
-    @Headers() headers: Record<string, string>,
     @Param('safeboxId') safeboxId: string,
   ): Promise<{ safebox: SafeboxRecord; members: SafeboxMemberRecord[]; role: string }> {
-    const userId = this.getUserId(req, headers);
-    return this.safeboxService.getSafeboxDetail(safeboxId, userId);
+    return this.safeboxService.getSafeboxDetail(safeboxId, this.getUserId(req));
   }
 
   @Get(':safeboxId/transactions')
   async getTransactionLedger(
     @Req() req: Request,
-    @Headers() headers: Record<string, string>,
     @Param('safeboxId') safeboxId: string,
   ): Promise<SafeboxTxRecord[]> {
-    const userId = this.getUserId(req, headers);
-    return this.safeboxService.getTransactionLedger(safeboxId, userId);
+    return this.safeboxService.getTransactionLedger(safeboxId, this.getUserId(req));
   }
 
   @Post(':safeboxId/contribute')
   @HttpCode(HttpStatus.OK)
   async contribute(
     @Req() req: Request,
-    @Headers() headers: Record<string, string>,
     @Param('safeboxId') safeboxId: string,
     @Body() dto: ContributeSafeboxDto,
-  ): Promise<SafeboxTxRecord> {
-    const userId = this.getUserId(req, headers);
-    return this.safeboxService.contribute(safeboxId, userId, dto);
+  ) {
+    return this.safeboxService.contribute(safeboxId, this.getUserId(req), dto);
   }
 
   @Post(':safeboxId/withdraw')
   @HttpCode(HttpStatus.OK)
   async withdraw(
     @Req() req: Request,
-    @Headers() headers: Record<string, string>,
     @Param('safeboxId') safeboxId: string,
     @Body() dto: WithdrawSafeboxDto,
-  ): Promise<SafeboxTxRecord> {
-    const userId = this.getUserId(req, headers);
+  ) {
     // Server-side guard inside service blocks non-owner/admin with HTTP 403
-    return this.safeboxService.withdraw(safeboxId, userId, dto);
+    return this.safeboxService.withdraw(safeboxId, this.getUserId(req), dto);
   }
 
   @Put(':safeboxId/members/role')
   @HttpCode(HttpStatus.OK)
   async updateMemberRole(
     @Req() req: Request,
-    @Headers() headers: Record<string, string>,
     @Param('safeboxId') safeboxId: string,
     @Body() dto: UpdateMemberRoleDto,
   ): Promise<SafeboxMemberRecord> {
-    const userId = this.getUserId(req, headers);
     // Server-side 3-admin cap enforced inside service
-    return this.safeboxService.updateMemberRole(safeboxId, userId, dto);
+    return this.safeboxService.updateMemberRole(safeboxId, this.getUserId(req), dto);
   }
 
   @Post(':safeboxId/members')
   @HttpCode(HttpStatus.CREATED)
   async addMember(
     @Req() req: Request,
-    @Headers() headers: Record<string, string>,
     @Param('safeboxId') safeboxId: string,
     @Body('userId') newUserId: string,
   ): Promise<SafeboxMemberRecord> {
-    const userId = this.getUserId(req, headers);
-    return this.safeboxService.addMember(safeboxId, userId, newUserId);
+    return this.safeboxService.addMember(safeboxId, this.getUserId(req), newUserId);
   }
 
   @Post(':safeboxId/transfer-ownership/initiate')
   async initiateOwnershipTransfer(
     @Req() req: Request,
-    @Headers() headers: Record<string, string>,
     @Param('safeboxId') safeboxId: string,
     @Body() dto: InitiateOwnershipTransferDto,
   ) {
-    const userId = this.getUserId(req, headers);
-    return this.safeboxService.initiateOwnershipTransfer(safeboxId, userId, dto);
+    return this.safeboxService.initiateOwnershipTransfer(safeboxId, this.getUserId(req), dto);
   }
 
   @Post(':safeboxId/transfer-ownership/confirm')
   async confirmOwnershipTransfer(
     @Req() req: Request,
-    @Headers() headers: Record<string, string>,
     @Param('safeboxId') safeboxId: string,
     @Body() dto: ConfirmOwnershipTransferDto,
   ) {
-    const userId = this.getUserId(req, headers);
-    return this.safeboxService.confirmOwnershipTransfer(safeboxId, userId, dto.transferToken);
+    return this.safeboxService.confirmOwnershipTransfer(safeboxId, this.getUserId(req), dto.transferToken);
   }
 }

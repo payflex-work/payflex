@@ -3,6 +3,8 @@ import '../../theme/payflex_tokens.dart';
 import '../../utils/money.dart';
 import '../../models/safebox.dart';
 import '../../services/api_client.dart';
+import '../../services/local_user_store.dart';
+import '../../services/wallet_service.dart';
 import '../../widgets/pf_mark.dart';
 import '../../widgets/pf_buttons.dart';
 import '../../widgets/pf_flow.dart';
@@ -109,7 +111,11 @@ class _SafeboxDetailScreenState extends State<SafeboxDetailScreen> {
     final amount = double.tryParse(amountController.text.trim());
     if (amount == null || amount <= 0) return;
 
-    // Use standard PfPaymentConfirmationSheet
+    // A contribution is a real signed BMONI transfer (member -> treasury,
+    // same pattern as savings goals) — onAuthorize captures the PIN so
+    // onSubmit can sign the resulting proposal directly, rather than
+    // prompting a second time via the shared transfer_flow helper.
+    String? capturedPin;
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -123,14 +129,24 @@ class _SafeboxDetailScreenState extends State<SafeboxDetailScreen> {
         amount: amount,
         fee: 0.0,
         onAuthorize: (pin) async {
-          return pin.length == 4;
+          if (pin.length != 6) return false;
+          capturedPin = pin;
+          return true;
         },
         onSubmit: () async {
-          await _api.contributeSafebox(
+          final tx = await _api.contributeSafebox(
             widget.safeboxId,
             amount,
             noteController.text.trim(),
           );
+          final proposalId = tx.proposalId;
+          final appUserId = await LocalUserStore().getAppUserId();
+          if (proposalId == null || appUserId == null || capturedPin == null) {
+            throw Exception('Could not sign the contribution — missing proposal or session info.');
+          }
+          final signPayload = await _api.getTransferSignPayload(appUserId, proposalId);
+          final signature = await WalletService.signDigest(signPayload.signingPayloadHash, capturedPin!);
+          await _api.signTransfer(appUserId, proposalId, signature);
         },
         onSuccess: () {
           _loadData();
@@ -215,14 +231,29 @@ class _SafeboxDetailScreenState extends State<SafeboxDetailScreen> {
         amount: amount,
         fee: 0.0,
         onAuthorize: (pin) async {
-          return pin.length == 4;
+          // No client-side signature is needed for a withdrawal — the
+          // treasury signs the release server-side (see
+          // SafeboxService.withdraw) — this PIN is still required as a
+          // deliberate re-confirmation step before moving pool funds,
+          // matching the build brief's payment-flow rule that every
+          // interactive money movement needs one.
+          return pin.length == 6;
         },
         onSubmit: () async {
+          // Only self-withdrawal is supported by this screen today (no
+          // recipient picker yet) — resolve the current user's own
+          // bmoniUserId rather than a placeholder value BMONI would
+          // reject outright.
+          final appUserId = await LocalUserStore().getAppUserId();
+          if (appUserId == null) {
+            throw Exception('No local session — cannot resolve a withdrawal destination.');
+          }
+          final me = await _api.getUser(appUserId);
           await _api.withdrawSafebox(
             widget.safeboxId,
             amount,
             noteController.text.trim(),
-            'acc_self',
+            me.bmoniUserId,
           );
         },
         onSuccess: () {
@@ -266,7 +297,7 @@ class _SafeboxDetailScreenState extends State<SafeboxDetailScreen> {
         children: [
           _buildHeroCard(),
           Padding(
-            padding: const EdgeInsets.horizontal(PayFlexSpacing.lg),
+            padding: const EdgeInsets.symmetric(horizontal: PayFlexSpacing.lg),
             child: Row(
               children: [
                 Expanded(
@@ -291,7 +322,7 @@ class _SafeboxDetailScreenState extends State<SafeboxDetailScreen> {
           ),
           const SizedBox(height: PayFlexSpacing.lg),
           Padding(
-            padding: const EdgeInsets.horizontal(PayFlexSpacing.lg),
+            padding: const EdgeInsets.symmetric(horizontal: PayFlexSpacing.lg),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -350,7 +381,7 @@ class _SafeboxDetailScreenState extends State<SafeboxDetailScreen> {
           ),
           const SizedBox(height: PayFlexSpacing.xs),
           Text(
-            formatMoney(_box!.currentBalance),
+            formatMoneyValue(_box!.currentBalance, 'NGN'),
             style: PayFlexTypography.heading1.copyWith(
               color: PayFlexColors.primaryGreen,
               fontSize: 36,
@@ -414,7 +445,7 @@ class _SafeboxDetailScreenState extends State<SafeboxDetailScreen> {
                     children: [
                       TextSpan(text: '$action '),
                       TextSpan(
-                        text: formatMoney(tx.amount),
+                        text: formatMoneyValue(tx.amount, 'NGN'),
                         style: TextStyle(
                             fontWeight: FontWeight.bold, color: color),
                       ),

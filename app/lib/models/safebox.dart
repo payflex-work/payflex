@@ -115,6 +115,12 @@ class SafeboxTransaction {
   final String note;
   final DateTime createdAt;
   final double runningBalance;
+  // Set on a freshly-created CONTRIBUTION only — the id of the BMONI
+  // transfer proposal the member still needs to sign (see
+  // ApiClient.contributeSafebox and transfer_flow.dart). Withdrawals are
+  // already treasury-signed server-side by the time this returns, so
+  // this is always null for those.
+  final String? proposalId;
 
   const SafeboxTransaction({
     required this.id,
@@ -126,6 +132,7 @@ class SafeboxTransaction {
     required this.note,
     required this.createdAt,
     required this.runningBalance,
+    this.proposalId,
   });
 
   factory SafeboxTransaction.fromJson(Map<String, dynamic> json) {
@@ -143,6 +150,7 @@ class SafeboxTransaction {
           ? DateTime.parse(json['createdAt'])
           : DateTime.now(),
       runningBalance: (json['runningBalance'] as num? ?? 0.0).toDouble(),
+      proposalId: json['proposalId'] as String?,
     );
   }
 }
