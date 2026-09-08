@@ -27,6 +27,7 @@ import { LinksModule } from './links/links.module';
 import { SafeboxModule } from './safebox/safebox.module';
 import { AdminModule } from './admin/admin.module';
 import { StandingPlansModule } from './standing-plans/standing-plans.module';
+import { StellarModule } from './stellar/stellar.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { StandingPlansModule } from './standing-plans/standing-plans.module';
     SafeboxModule,
     AdminModule,
     StandingPlansModule,
+    StellarModule,
   ],
   providers: [
     // Order matters: throttling runs before auth so a flood of requests

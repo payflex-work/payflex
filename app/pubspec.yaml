@@ -32,6 +32,15 @@ dependencies:
   # QR Pay (Phase 3): render a payment QR and scan one to pay.
   qr_flutter: ^4.1.0
   mobile_scanner: ^7.4.0
+  # Stellar rail (optional, parallel to BMONI — see lib/stellar/). Official
+  # SDK: builds/signs/submits Stellar transactions and queries Horizon.
+  # Never implement Stellar key generation/signing outside this package,
+  # same rule as bmoni_embedded_sdk above.
+  stellar_flutter_sdk: ^3.6.0
+  # Real device keychain/keystore for the Stellar secret key (not
+  # SharedPreferences) — already pulled in transitively by
+  # stellar_flutter_sdk; declared directly since lib/stellar/ uses it.
+  flutter_secure_storage: ^10.3.1
 
 dev_dependencies:
   flutter_test:
