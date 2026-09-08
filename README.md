@@ -1,44 +1,112 @@
 # PayFlex
 
-PayFlex is a Flutter microfinance application with a NestJS orchestration API.
-It uses **BMONI Embedded** as its only settlement rail for identity, managed
-smart wallets, KYC, and money movement.
+A mobile-first microfinance app (in the spirit of Moniepoint / OPay) built
+on top of the **BMONI Embedded API** for identity, wallets, KYC, and money
+movement. PayFlex adds a savings/micro-loan layer, an agent cash-in/cash-out
+network, group savings (Safebox), an offline payment protocol, and a
+QR-first transfer UX on top of BMONI's smart-wallet rails.
 
-## Architecture
+Full spec: [`docs/BUILD_PROMPT.md`](docs/BUILD_PROMPT.md). This README
+tracks what's actually been built against that spec — see the "Not built"
+section near the bottom before assuming a feature exists just because it's
+mentioned somewhere.
+
+## Architecture, in one paragraph
+
+BMONI Embedded is **not** built on Stellar — it's EVM-based managed smart
+wallets (owner-proof challenge + EIP-191 signing) backed by regional
+stablecoins (`USDB`, `CNGN`, `CADC`, `EURe`, `MEXe`). BMONI is the only
+settlement rail in this build; nothing here talks to Stellar/Horizon/Soroban.
+The Flutter app never calls BMONI directly and never touches key material
+itself — it goes through the NestJS backend's single `BmoniClientService`
+for every API call, and through `bmoni_embedded_sdk` for every key
+generation / signing operation (the one exception, by design: the offline
+protocol's device identity key is a separate Ed25519 keypair, deliberately
+independent of the BMONI EVM key — see "Offline payment protocol" below).
 
 ```
-app/       Flutter mobile client (iOS and Android)
-backend/   NestJS API, Prisma schema, BMONI client, and sandbox scripts
-infra/     Local sandbox recovery and keep-alive helpers
+app/       Flutter mobile app (iOS + Android)
+backend/   NestJS orchestration service — the only thing that calls BMONI
+docs/      The original build brief (source of truth for architecture)
 ```
 
-BMONI Embedded uses EVM managed wallets, owner-proof challenges, and EIP-191
-signatures with regional stablecoins. It is not a Stellar, Horizon, or Soroban
-integration. The app calls only the PayFlex backend; on-device wallet key
-generation and signing stay in `bmoni_embedded_sdk`.
+## Where the BMONI API boundary actually is
 
-## BMONI boundary
+**Real BMONI functionality** (`backend/src/bmoni/` wraps all of it): user
+creation, on-device owner-wallet proof + managed smart wallets, the KYC
+document/readiness/activation wizard, per-currency rail onboarding
+(NGN/USD/CAD/EUR/MXN), wallet balances/detail, deposits, virtual bank
+accounts, NGN bank withdrawal, general bank payouts, currency exchange,
+the proposal → sign-payload → sign transfer primitive, and transaction
+history.
 
-BMONI provides user identity, owner-wallet proof, managed wallets,
-KYC/onboarding, balances, deposits, payouts, and signed wallet-to-wallet
-proposals. PayFlex adds PayTags and QR payloads, split bills, claimable-link
-escrow, savings goals, credit scoring and loans, agent tracking, and Safebox
-group savings. Safebox is an application ledger and permission model, not a
-BMONI escrow product. Claimable links use a PayFlex treasury escrow and need
-compliance review before production use.
+**PayFlex-built, no BMONI equivalent** (all app-layer, on top of the
+transfer primitive above): lending/credit scoring, savings goals, agent
+cash-in/cash-out, Safebox group savings, claimable payment links
+(treasury-escrowed for non-users — a real custody liability, see
+`backend/prisma/schema.prisma`'s `ClaimableLink` doc comment before
+touching that code), PayTag directory, QR Pay, split-bill orchestration,
+and the offline payment protocol. Full phase-by-phase build history and
+live-sandbox findings are in `backend/README.md` and `app/README.md`.
 
-## Safebox and payment safety
+## Authentication
 
-Safebox is implemented in `backend/src/safebox` and `app/lib/screens/safebox`.
-Members can contribute; only the owner or a designated admin can withdraw; a
-Safebox may have at most three designated admins. Those limits are enforced on
-the server and covered by backend tests.
+Every route requires a valid access token by default (`AuthGuard`, global
+guard); a route opts out explicitly with `@Public()`. Login is
+challenge-response, reusing the on-device EVM owner key every user already
+has for BMONI signing — no separate password/OTP system. Rate limiting on
+the auth endpoints. Full design and what was verified live:
+`backend/README.md`'s Authentication section.
 
-Safebox contributions and withdrawals use the shared flow in
-`app/lib/widgets/pf_flow.dart`: review, transaction-PIN authentication,
-submission, terminal result, then ledger refresh. The shared PayFlex token and
-component system is the UI source of truth; it uses restrained elevation only,
-never glow or neon effects.
+## Safebox group savings
+
+Owner/admin/member roles, a 3-admin cap, owner-or-admin-only withdrawal, a
+2-step ownership-transfer confirmation — all enforced server-side, not
+just hidden in the UI. Contributions are real signed TRANSFER proposals
+(member → treasury, same pattern as savings goals); withdrawals are
+treasury-signed releases (same pattern as loan disbursement), since a
+shared pool has no single member whose on-device key can sign on its
+behalf. `currentBalance` is optimistic bookkeeping — this build has no way
+to confirm a signed proposal actually settled on-chain, same honest
+limitation `SavingsGoal.totalContributed` already carries. Verified live
+end to end (`npm run sandbox:safebox`). Details: `backend/README.md`'s
+Safebox section.
+
+## Offline payment protocol
+
+A separate payment path for when neither party has connectivity: an
+animated "optical fountain" QR transport (`app/lib/protocol/`) carries a
+signed `PaymentRequest`/`PaymentConfirmation`/`OfflineAuthorization`
+exchange between two devices over the camera, backed by a
+pre-provisioned, chained "Reserve" allowance (`OfflineReserveService`)
+that's spent down and cryptographically chained (each authorization signs
+over the previous one's state hash) entirely offline. Once either device
+regains connectivity, `OfflineRedemptionService.syncAndRedeemAll` replays
+the queued authorizations through the normal BMONI transfer/sign flow to
+actually settle them. Uses its own Ed25519 device identity key
+(`DeviceKeyService`), deliberately separate from the BMONI EVM owner key —
+this proves "this physical device produced this signed message," not
+KYC'd financial identity, which BMONI still governs entirely at online
+settlement time. Covered by 23 Flutter tests (protocol/crypto primitives,
+the reserve service, and a full two-device e2e simulation) — all passing.
+
+## Design system
+
+One shared token file (`app/lib/theme/payflex_tokens.dart`) and theme
+(`payflex_theme.dart`) for the whole app: the blue→emerald gradient, deep
+navy dark mode, a fixed spacing/radius/type scale, and a hard "no
+glow/neon" rule enforced by construction (every shadow is a small,
+low-opacity, neutral elevation). A shared component library
+(`app/lib/widgets/pf_*.dart`) — buttons, panels, status chips, empty/error
+states, the branded loader, and the shared five-step money-movement
+confirmation flow (Review → Authenticate → Submit → Result → Record) —
+means every money-moving screen (transfers, QR Pay, savings, loans, agent
+mode, split-bill, send-via-link, Safebox) goes through the same
+`signAndSubmitTransfer` + confirmation pattern rather than each building
+its own. `flutter analyze` clean, `flutter test` clean; not yet visually
+verified on a real device or emulator — this environment has no
+display/emulator, so someone needs to actually look at it running before
+calling the visual pass done.
 
 ## Development
 
@@ -48,7 +116,16 @@ npm install
 cp .env.example .env
 docker compose up -d
 npx prisma migrate dev
-npm run start:dev
+npm run start:dev            # backend on :3000
+npm test                     # unit tests (auth, loans IDOR fix, safebox permissions)
+npm run sandbox:lifecycle    # re-verify Phase 1 against the live sandbox
+npm run sandbox:phase2       # re-verify Phase 2 NGN KYC + onboarding
+npm run sandbox:kyc-mismatch # the deliberate BVN/name-mismatch check
+npm run sandbox:phase3       # re-verify Phase 3 transfers, QR Pay, PayTag
+npm run provision:treasury   # one-time: create PayFlex's treasury BMONI account
+npm run sandbox:phase4       # re-verify Phase 4 savings, loans, agent mode
+npm run sandbox:phase5       # re-verify Phase 5 split-bill, send-via-link/escrow
+npm run sandbox:safebox      # re-verify Safebox group savings
 ```
 
 ```bash
@@ -59,18 +136,45 @@ flutter test
 flutter run --dart-define=BACKEND_BASE_URL=http://10.0.2.2:3000
 ```
 
-Use `npm run sandbox:safebox` from `backend/` after Postgres and Redis are
-running. Other sandbox scripts and confirmed live-integration findings are in
-[`backend/README.md`](backend/README.md).
-
 ## Current verification status
 
-- Backend unit tests: 47 passing across 7 suites.
-- Backend production build: passing.
-- Flutter verification requires a Flutter SDK in the current environment;
-  install/allocate one before treating mobile validation as complete.
-- Production credentials, webhook signing, secret management, and a visual
-  device/emulator review remain deployment prerequisites.
+- Backend: 51 unit tests passing across 7 suites; `tsc --noEmit` clean;
+  all 6 sandbox scripts pass against the live BMONI sandbox.
+- Flutter: `flutter analyze` — 0 errors; `flutter test` — 23/23 passing.
+- Not yet done: `flutter build apk` (no Android SDK in this environment),
+  a real on-device/emulator visual walkthrough (no display/emulator
+  here), production credentials, webhook signing, and real secrets
+  management (`JWT_SECRET` and the treasury key are plain env vars —
+  fine for sandbox, need a real KMS before production).
 
-Virtual cards, betting funding, and offline mesh transfers are intentionally
-out of scope until product and compliance specifications exist.
+## Not built
+
+**Standing Plans, a virtual card, a betting page, and an admin panel do
+not exist anywhere in this codebase** — not stubbed, not partial. If a
+future prompt references them as already built, that's not accurate;
+check before trusting it. Card issuance and gambling both carry real
+compliance weight that shouldn't be guessed at — building either needs an
+explicit product/compliance spec first, not an assumption from a prompt.
+
+## Non-negotiable engineering rules (see docs/BUILD_PROMPT.md §7)
+
+- Every BMONI call goes through `BmoniClientService` — no ad-hoc HTTP calls
+  in feature code.
+- No key generation, storage, or signing outside `bmoni_embedded_sdk`
+  (`WalletService`) for the BMONI key, or `DeviceKeyService` for the
+  offline-protocol device key — never inline in a screen or service.
+- `bmoniUserId` is persisted on first creation, both locally on-device
+  (`SharedPreferences`) and in the backend's Postgres — a user is never
+  recreated on relaunch.
+- KYC submit order and per-currency activation are hard constraints, not
+  suggestions (Phase 2).
+- All monetary amounts go through one shared money-formatting utility
+  rather than inline conversions (`backend/src/common/money.util.ts`,
+  `app/lib/utils/money.dart`).
+- A webhook receiver (`POST /webhooks/bmoni`) logs and persists every
+  BMONI async event, even before all event types are acted on.
+- Every route requires a valid access token by default (`AuthGuard`); a
+  route opts out explicitly with `@Public()`, never implicitly.
+- Every money-movement screen uses the shared confirmation flow
+  (`signAndSubmitTransfer` + `showPfConfirmation`) — don't build a
+  feature-specific payment sheet.

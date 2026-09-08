@@ -5,6 +5,13 @@ import 'package:bmoni_embedded_sdk/bmoni_embedded_sdk.dart';
 /// anywhere else. The private key never leaves the device; only public
 /// addresses and signatures cross into ApiClient calls.
 class WalletService {
+  /// Injected signer for tests that can't reach the real SDK (it needs a
+  /// provisioned on-device wallet and platform secure storage, neither of
+  /// which exist in a plain `flutter test` VM run). Must stay null in
+  /// production — every call falls back to the real BmoniEmbeddedSdk
+  /// behavior whenever it's unset, so this changes nothing shipped.
+  static Future<String> Function(String digestHex, String pin)? signDigestHook;
+
   static void initialize() {
     // 6-digit PIN, required before signMessage/deleteWallet — matches
     // the "PIN-gated signing" requirement in the build brief.
@@ -42,6 +49,8 @@ class WalletService {
   /// owner address"). See backend/README.md "Phase 3 findings" for the
   /// full story. Do not run `digestHex` through any additional hashing
   /// before calling this.
-  static Future<String> signDigest(String digestHex, String pin) =>
-      BmoniEmbeddedSdk.signTransactionHash(digestHex, pin: pin);
+  static Future<String> signDigest(String digestHex, String pin) {
+    if (signDigestHook != null) return signDigestHook!(digestHex, pin);
+    return BmoniEmbeddedSdk.signTransactionHash(digestHex, pin: pin);
+  }
 }

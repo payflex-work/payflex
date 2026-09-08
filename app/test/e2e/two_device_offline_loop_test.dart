@@ -9,6 +9,7 @@ import 'package:payflex/services/api_client.dart';
 import 'package:payflex/services/device_key_service.dart';
 import 'package:payflex/services/offline_reserve_service.dart';
 import 'package:payflex/services/offline_redemption_service.dart';
+import 'package:payflex/services/wallet_service.dart';
 
 /// Mock ApiClient for simulating BMONI online reconnection and settlement.
 class MockSettlementApiClient extends ApiClient {
@@ -78,6 +79,12 @@ class MockSettlementApiClient extends ApiClient {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   SharedPreferences.setMockInitialValues({});
+  // The real BmoniEmbeddedSdk needs a provisioned on-device wallet and
+  // platform secure storage, neither of which exist in this VM test —
+  // MockSettlementApiClient never checks the signature value itself, so
+  // any placeholder is fine here (same simulated-signer role the
+  // backend's own sandbox scripts give ethers.Wallet).
+  WalletService.signDigestHook = (digestHex, pin) async => '0xmocksignature';
 
   group('E2E Two-Device Offline Payment & Reconciliation Loop', () {
     // Device A (Receiver / Merchant: Amina Cafe)

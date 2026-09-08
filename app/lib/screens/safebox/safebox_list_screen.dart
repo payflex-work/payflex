@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../theme/payflex_tokens.dart';
+import '../../theme/payflex_theme.dart';
 import '../../utils/money.dart';
 import '../../models/safebox.dart';
 import '../../services/api_client.dart';
-import '../../widgets/pf_mark.dart';
+import '../../widgets/pf_balance_card.dart';
 import '../../widgets/pf_buttons.dart';
+import '../../widgets/pf_motion.dart';
 import '../../widgets/pf_states.dart';
 import 'safebox_create_screen.dart';
 import 'safebox_detail_screen.dart';
@@ -51,57 +53,47 @@ class _SafeboxListScreenState extends State<SafeboxListScreen> {
     }
   }
 
+  Future<void> _openCreate() async {
+    final ok = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const SafeboxCreateScreen()),
+    );
+    if (ok == true) _loadData();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Safebox Group Savings'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add_circle_outline),
-            tooltip: 'Create Safebox',
-            onPressed: () async {
-              final ok = await Navigator.push<bool>(
-                context,
-                MaterialPageRoute(builder: (_) => const SafeboxCreateScreen()),
-              );
-              if (ok == true) _loadData();
-            },
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: _loadData,
-        child: _isLoading
-            ? const Center(child: PfLoader())
-            : _error != null
-                ? PfErrorState(message: _error!, onRetry: _loadData)
-                : _items.isEmpty
-                    ? _buildEmptyState()
-                    : ListView.separated(
-                        padding: const EdgeInsets.all(PayFlexSpacing.lg),
-                        itemCount: _items.length,
-                        separatorBuilder: (_, __) =>
-                            const SizedBox(height: PayFlexSpacing.md),
-                        itemBuilder: (context, index) {
-                          final item = _items[index];
-                          return _buildCard(item.safebox, item.role);
-                        },
-                      ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          final ok = await Navigator.push<bool>(
-            context,
-            MaterialPageRoute(builder: (_) => const SafeboxCreateScreen()),
-          );
-          if (ok == true) _loadData();
-        },
-        backgroundColor: PayFlexColors.primaryBlue,
-        icon: const Icon(Icons.shield_outlined, color: Colors.white),
-        label: const Text(
-          'New Safebox',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+    return Theme(
+      data: PayFlexTheme.light,
+      child: Scaffold(
+        backgroundColor: PfColors.offWhite,
+        appBar: AppBar(
+          title: const Text('Safebox Group Savings'),
+          backgroundColor: PfColors.offWhite,
+        ),
+        body: RefreshIndicator(
+          onRefresh: _loadData,
+          color: PfColors.royalBlue,
+          child: _isLoading
+              ? const Center(child: PfBrandedLoader(size: 52))
+              : _error != null
+                  ? Center(child: PfInlineError(message: _error!, onRetry: _loadData))
+                  : _items.isEmpty
+                      ? _buildEmptyState()
+                      : ListView.separated(
+                          padding: const EdgeInsets.all(PfSpace.lg),
+                          itemCount: _items.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: PfSpace.md),
+                          itemBuilder: (context, index) {
+                            final item = _items[index];
+                            return _buildCard(item.safebox, item.role);
+                          },
+                        ),
+        ),
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: _openCreate,
+          icon: const Icon(Icons.add_rounded),
+          label: const Text('New Safebox'),
         ),
       ),
     );
@@ -113,34 +105,12 @@ class _SafeboxListScreenState extends State<SafeboxListScreen> {
       child: Container(
         height: MediaQuery.of(context).size.height * 0.7,
         alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: PayFlexSpacing.xl),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(PayFlexSpacing.xl),
-              decoration: BoxDecoration(
-                color: PayFlexColors.primaryBlue.withOpacity(0.12),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.lock_clock_outlined,
-                size: 56,
-                color: PayFlexColors.primaryBlue,
-              ),
-            ),
-            const SizedBox(height: PayFlexSpacing.lg),
-            Text(
-              'No Active Safeboxes',
-              style: PayFlexTypography.heading1,
-            ),
-            const SizedBox(height: PayFlexSpacing.sm),
-            Text(
-              'Create a transparent group savings pool to pool funds securely with friends, family, or partners.',
-              style: PayFlexTypography.bodySmall,
-              textAlign: TextAlign.center,
-            ),
-          ],
+        padding: const EdgeInsets.symmetric(horizontal: PfSpace.xl),
+        child: const PfEmptyState(
+          icon: Icons.savings_outlined,
+          title: 'No safeboxes yet',
+          message: 'Create a transparent group savings pool to save toward '
+              'something with people you trust.',
         ),
       ),
     );
@@ -151,134 +121,99 @@ class _SafeboxListScreenState extends State<SafeboxListScreen> {
     if (roleStr.toUpperCase() == 'OWNER') role = SafeboxRole.owner;
     if (roleStr.toUpperCase() == 'ADMIN') role = SafeboxRole.admin;
 
-    return Card(
-      child: InkWell(
-        onTap: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => SafeboxDetailScreen(safeboxId: sb.id),
-            ),
-          );
-          _loadData();
-        },
-        borderRadius: BorderRadius.circular(PayFlexRadius.md),
-        child: Padding(
-          padding: const EdgeInsets.all(PayFlexSpacing.lg),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return PfPanel(
+      onTap: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => SafeboxDetailScreen(safeboxId: sb.id)),
+        );
+        _loadData();
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Text(
-                      sb.name,
-                      style: PayFlexTypography.heading2,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  _roleBadge(role),
-                ],
-              ),
-              const SizedBox(height: PayFlexSpacing.xs),
-              Text(
-                sb.description,
-                style: PayFlexTypography.bodySmall,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: PayFlexSpacing.md),
-              const Divider(),
-              const SizedBox(height: PayFlexSpacing.sm),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Pool Balance', style: PayFlexTypography.caption),
-                      const SizedBox(height: 2),
-                      Text(
-                        formatMoneyValue(sb.currentBalance, 'NGN'),
-                        style: PayFlexTypography.heading1.copyWith(
-                          color: PayFlexColors.primaryGreen,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (sb.targetAmount != null && sb.targetAmount! > 0)
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text('Target Goal', style: PayFlexTypography.caption),
-                        const SizedBox(height: 2),
-                        Text(
-                          formatMoneyValue(sb.targetAmount!, 'NGN'),
-                          style: PayFlexTypography.heading2,
-                        ),
-                      ],
-                    ),
-                ],
-              ),
-              if (sb.targetAmount != null && sb.targetAmount! > 0) ...[
-                const SizedBox(height: PayFlexSpacing.md),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: sb.progressPercentage,
-                    minHeight: 6,
-                    backgroundColor: PayFlexColors.darkSurfaceAlt,
-                    valueColor: const AlwaysStoppedAnimation<Color>(
-                        PayFlexColors.primaryGreen),
-                  ),
+              Expanded(
+                child: Text(
+                  sb.name,
+                  style: const TextStyle(color: PfColors.ink, fontSize: 15.5, fontWeight: FontWeight.w700),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: PayFlexSpacing.xs),
-                Text(
-                  '${(sb.progressPercentage * 100).toStringAsFixed(1)}% achieved',
-                  style: PayFlexTypography.caption,
-                ),
-              ],
+              ),
+              _roleBadge(role),
             ],
           ),
-        ),
+          const SizedBox(height: 4),
+          Text(
+            sb.description,
+            style: const TextStyle(color: PfColors.inkMuted, fontSize: 12.5),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: PfSpace.md),
+          const Divider(height: 1),
+          const SizedBox(height: PfSpace.sm),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Pool balance', style: TextStyle(color: PfColors.inkFaint, fontSize: 11.5)),
+                  const SizedBox(height: 2),
+                  Text(
+                    formatMoneyValue(sb.currentBalance, 'NGN'),
+                    style: PfMoneyType.small.copyWith(color: PfColors.ink),
+                  ),
+                ],
+              ),
+              if (sb.targetAmount != null && sb.targetAmount! > 0)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    const Text('Target goal', style: TextStyle(color: PfColors.inkFaint, fontSize: 11.5)),
+                    const SizedBox(height: 2),
+                    Text(
+                      formatMoneyValue(sb.targetAmount!, 'NGN'),
+                      style: const TextStyle(color: PfColors.inkMuted, fontSize: 14, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+          if (sb.targetAmount != null && sb.targetAmount! > 0) ...[
+            const SizedBox(height: PfSpace.md),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: sb.progressPercentage,
+                minHeight: 6,
+                backgroundColor: PfColors.surfaceAlt,
+                valueColor: const AlwaysStoppedAnimation<Color>(PfColors.emerald),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${(sb.progressPercentage * 100).toStringAsFixed(1)}% achieved',
+              style: const TextStyle(color: PfColors.inkFaint, fontSize: 11.5),
+            ),
+          ],
+        ],
       ),
     );
   }
 
   Widget _roleBadge(SafeboxRole role) {
-    Color bg;
-    Color fg;
-    switch (role) {
-      case SafeboxRole.owner:
-        bg = PayFlexColors.primaryBlue.withOpacity(0.2);
-        fg = PayFlexColors.primaryBlue;
-        break;
-      case SafeboxRole.admin:
-        bg = PayFlexColors.warning.withOpacity(0.2);
-        fg = PayFlexColors.warning;
-        break;
-      case SafeboxRole.member:
-        bg = PayFlexColors.darkSurfaceAlt;
-        fg = PayFlexColors.textMutedDark;
-        break;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(PayFlexRadius.xs),
-      ),
-      child: Text(
-        role.label.toUpperCase(),
-        style: TextStyle(
-          color: fg,
-          fontWeight: FontWeight.bold,
-          fontSize: 10,
-        ),
-      ),
+    return PfStatusChip(
+      label: role.label,
+      tone: switch (role) {
+        SafeboxRole.owner => PfTone.info,
+        SafeboxRole.admin => PfTone.warn,
+        SafeboxRole.member => PfTone.muted,
+      },
     );
   }
 }

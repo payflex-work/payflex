@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/payflex_tokens.dart';
+import '../../theme/payflex_theme.dart';
 import '../../services/api_client.dart';
 import '../../widgets/pf_buttons.dart';
 
@@ -55,7 +56,7 @@ class _SafeboxCreateScreenState extends State<SafeboxCreateScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(e.toString().replaceAll('ApiException: ', '')),
-            backgroundColor: PayFlexColors.error,
+            backgroundColor: PfColors.danger,
           ),
         );
       }
@@ -66,84 +67,90 @@ class _SafeboxCreateScreenState extends State<SafeboxCreateScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Create New Safebox'),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(PayFlexSpacing.lg),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Group Savings Pool Details',
-                style: PayFlexTypography.heading1,
-              ),
-              const SizedBox(height: PayFlexSpacing.xs),
-              Text(
-                'Safebox pools are transparent to all members. Anyone can contribute, but only you (and designated admins) can withdraw.',
-                style: PayFlexTypography.bodySmall,
-              ),
-              const SizedBox(height: PayFlexSpacing.xl),
-              Text(
-                'Safebox Name',
-                style: PayFlexTypography.body.copyWith(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: PayFlexSpacing.xs),
-              TextFormField(
-                controller: _nameController,
-                validator: (val) {
-                  if (val == null || val.trim().isEmpty) {
-                    return 'Please enter a name for the Safebox';
-                  }
-                  return null;
-                },
-                decoration: const InputDecoration(
-                  hintText: 'e.g. Kenya Trip 2026, House Rent Pool',
+    return Theme(
+      data: PayFlexTheme.light,
+      child: Scaffold(
+        backgroundColor: PfColors.offWhite,
+        appBar: AppBar(
+          title: const Text('Create New Safebox'),
+          backgroundColor: PfColors.offWhite,
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(PfSpace.lg),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Group Savings Pool Details',
+                  style: Theme.of(context).textTheme.headlineSmall,
                 ),
-              ),
-              const SizedBox(height: PayFlexSpacing.lg),
-              Text(
-                'Description / Purpose',
-                style: PayFlexTypography.body.copyWith(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: PayFlexSpacing.xs),
-              TextFormField(
-                controller: _descController,
-                maxLines: 3,
-                validator: (val) {
-                  if (val == null || val.trim().isEmpty) {
-                    return 'Please describe the purpose of this pool';
-                  }
-                  return null;
-                },
-                decoration: const InputDecoration(
-                  hintText: 'Describe who this pool is for and how funds will be used.',
+                const SizedBox(height: PfSpace.xs),
+                const Text(
+                  'Safebox pools are transparent to all members. Anyone can '
+                  'contribute, but only you (and designated admins) can withdraw.',
+                  style: TextStyle(color: PfColors.inkMuted, fontSize: 13, height: 1.4),
                 ),
-              ),
-              const SizedBox(height: PayFlexSpacing.lg),
-              Text(
-                'Target Amount (Optional)',
-                style: PayFlexTypography.body.copyWith(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: PayFlexSpacing.xs),
-              TextFormField(
-                controller: _targetController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
-                  prefixText: '₦ ',
-                  hintText: '0.00',
+                const SizedBox(height: PfSpace.xl),
+                const Text(
+                  'Safebox Name',
+                  style: TextStyle(color: PfColors.ink, fontSize: 14.5, fontWeight: FontWeight.w700),
                 ),
-              ),
-              const SizedBox(height: PayFlexSpacing.xxl),
-              PfPrimaryButton(
-                label: 'Create Safebox',
-                busy: _isSubmitting,
-                onPressed: _handleCreate,
-              ),
-            ],
+                const SizedBox(height: PfSpace.xs),
+                TextFormField(
+                  controller: _nameController,
+                  validator: (val) {
+                    if (val == null || val.trim().isEmpty) {
+                      return 'Please enter a name for the Safebox';
+                    }
+                    return null;
+                  },
+                  decoration: const InputDecoration(
+                    hintText: 'e.g. Kenya Trip 2026, House Rent Pool',
+                  ),
+                ),
+                const SizedBox(height: PfSpace.lg),
+                const Text(
+                  'Description / Purpose',
+                  style: TextStyle(color: PfColors.ink, fontSize: 14.5, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: PfSpace.xs),
+                TextFormField(
+                  controller: _descController,
+                  maxLines: 3,
+                  validator: (val) {
+                    if (val == null || val.trim().isEmpty) {
+                      return 'Please describe the purpose of this pool';
+                    }
+                    return null;
+                  },
+                  decoration: const InputDecoration(
+                    hintText: 'Describe who this pool is for and how funds will be used.',
+                  ),
+                ),
+                const SizedBox(height: PfSpace.lg),
+                const Text(
+                  'Target Amount (Optional)',
+                  style: TextStyle(color: PfColors.ink, fontSize: 14.5, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: PfSpace.xs),
+                TextFormField(
+                  controller: _targetController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    prefixText: '₦ ',
+                    hintText: '0.00',
+                  ),
+                ),
+                const SizedBox(height: PfSpace.xxl),
+                PfPrimaryButton(
+                  label: 'Create Safebox',
+                  busy: _isSubmitting,
+                  onPressed: _handleCreate,
+                ),
+              ],
+            ),
           ),
         ),
       ),

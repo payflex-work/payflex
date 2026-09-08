@@ -67,8 +67,7 @@ flutter run --dart-define=BACKEND_BASE_URL=http://10.0.2.2:3000
 
 ## Design system (UI/UX & Motion Design Brief v2)
 
-The visual layer implements the root README's "Safebox and payment safety"
-guidance — "premium private
+The visual layer implements `docs/BUILD_PROMPT.md` §9 — "premium private
 bank meets modern fintech," built off the approved logo (QR-corners +
 flowing-arrow mark, blue→emerald gradient, deep navy base).
 
@@ -218,6 +217,28 @@ flowing-arrow mark, blue→emerald gradient, deep navy base).
 14. `StubRailsScreen` (Phase 5) — a plain "coming soon" list for
     CAD/EUR/MXN, matching the build brief's own reduced ambition for
     these three rails ("structurally wired but not UI-polished").
+15. `SafeboxListScreen` / `SafeboxDetailScreen` / `SafeboxCreateScreen` /
+    `SafeboxManageMembersScreen` — group savings. Contribution goes
+    through the same `signAndSubmitTransfer` sign/submit flow as every
+    other transfer; withdrawal doesn't need client-side signing since
+    the treasury already signed the release by the time the call
+    returns, but still gates on a PIN re-confirmation
+    (`promptForPin`) before submitting. Role management and the
+    2-step ownership transfer live in the manage-members screen,
+    owner-only.
+16. Offline payment protocol (`lib/protocol/`, `AnimatedOpticalQr`,
+    `OfflineReserveService`, `OfflineRedemptionService`) — a
+    provisioned Reserve allowance lets two devices exchange a signed
+    payment entirely offline over animated QR (a "fountain coder"
+    transport tolerant of dropped/out-of-order frames), using a
+    separate Ed25519 device identity key (`DeviceKeyService`) rather
+    than the BMONI EVM key. `syncAndRedeemAll` replays the queue
+    through the normal transfer flow once either device reconnects.
+    Wired directly into `QrPayScreen` (offline-reserve provisioning,
+    the optical broadcast/scan tabs, and reconnect-time redemption all
+    live there) — reachable the same way regular QR Pay is, no
+    separate nav entry needed. Covered by 23 Flutter tests (unit + a
+    full two-device e2e simulation).
 
 ## Authentication
 
@@ -250,11 +271,8 @@ app-side summary.
   backend account rather than forking a new one; it just can't skip the
   on-device wallet/PIN setup, since a wallet was never created on *this*
   device to log in with.
-- **No settings/logout UI yet** — `SessionManager.logout()` exists
-  (clears the in-memory tokens and the persisted refresh token) but
-  nothing in the UI calls it. Wiring it up belongs with the "real
-  settings/profile screen" work described in the root README, not
-  this pass.
+- **`SettingsScreen`** wires up `_signOut()` to the real sign-out path,
+  with a confirmation dialog before clearing the session.
 
 ## Error handling, retry, and offline (Phase 5 polish)
 

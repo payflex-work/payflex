@@ -3,6 +3,7 @@ import '../models/app_user.dart';
 import '../services/api_client.dart';
 import '../services/local_user_store.dart';
 import '../services/retry.dart';
+import '../services/session_manager.dart';
 import '../theme/payflex_tokens.dart';
 import '../theme/payflex_theme.dart';
 import '../widgets/pf_buttons.dart';
@@ -146,6 +147,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
+    // Both halves matter: SessionManager.logout() clears the in-memory
+    // access/refresh tokens and the persisted refresh token, so a stale
+    // session can never survive "sign out" — clearing only the local
+    // user-id pointer would leave both behind, unrevoked.
+    await SessionManager.logout();
     await _store.clear();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
