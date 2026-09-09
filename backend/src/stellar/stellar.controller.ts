@@ -1,5 +1,6 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import { Public } from '../auth/public.decorator';
 import { StellarService } from './stellar.service';
 
 /**
@@ -15,6 +16,9 @@ import { StellarService } from './stellar.service';
 export class StellarController {
   constructor(private readonly stellar: StellarService) {}
 
+  // Static config, same reasoning as GET /onboarding/supported-currencies:
+  // needed before a session exists (the app may check this pre-login).
+  @Public()
   @Get('network')
   getNetwork() {
     return this.stellar.getNetworkInfo();

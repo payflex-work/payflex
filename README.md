@@ -72,6 +72,18 @@ limitation `SavingsGoal.totalContributed` already carries. Verified live
 end to end (`npm run sandbox:safebox`). Details: `backend/README.md`'s
 Safebox section.
 
+## Stellar rail (optional, parallel to BMONI)
+
+A second, optional wallet on the real Stellar network — defaults to
+testnet, never routed through BMONI, never replacing the primary
+regulated wallet BMONI provides. On-device ED25519 keypair, real
+trustlines and payments (native XLM and issued assets), mandatory
+"this cannot be undone" confirmation before every send since Stellar
+transactions are irreversible on-chain. Verified end to end against live
+testnet (`npm run stellar:testnet-walkthrough`, from `backend/`). Full
+architecture, the three-distinct-keys explanation, and mainnet
+activation notes: `docs/stellar-rail.md`.
+
 ## Offline payment protocol
 
 A separate payment path for when neither party has connectivity: an

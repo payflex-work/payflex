@@ -26,7 +26,8 @@
     "sandbox:standing-plans": "ts-node -r tsconfig-paths/register scripts/sandbox-standing-plans.ts",
     "provision:treasury": "ts-node -r tsconfig-paths/register scripts/provision-treasury.ts",
     "provision:admin": "ts-node -r tsconfig-paths/register scripts/provision-admin.ts",
-    "verify:offline": "ts-node -r tsconfig-paths/register scripts/verify-offline-protocol.ts"
+    "verify:offline": "ts-node -r tsconfig-paths/register scripts/verify-offline-protocol.ts",
+    "stellar:testnet-walkthrough": "ts-node -r tsconfig-paths/register scripts/stellar-testnet-walkthrough.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.0",

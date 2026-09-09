@@ -903,4 +903,17 @@ class ApiClient {
     );
     _decodeAnyOrThrow(res);
   }
+
+  // --- Stellar rail (parallel to BMONI — see lib/stellar/) ------------------
+  //
+  // Server-driven network config only, same reason as Env.backendBaseUrl:
+  // one source of truth for which Horizon this build talks to, rather
+  // than hardcoding it twice. Every actual Stellar operation (keypair,
+  // signing, submission) happens on-device via StellarClient, straight
+  // against Horizon — this call is public (no auth needed).
+
+  Future<Map<String, dynamic>> getStellarNetwork() async {
+    final res = await http.get(_uri('/stellar/network'), headers: _authHeaders());
+    return _decodeOrThrow(res);
+  }
 }

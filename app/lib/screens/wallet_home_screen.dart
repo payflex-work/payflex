@@ -27,6 +27,7 @@ import 'admin_screen.dart';
 import 'virtual_card_screen.dart';
 import 'betting_screen.dart';
 import 'stub_rails_screen.dart';
+import 'stellar/stellar_wallet_screen.dart';
 import '../services/offline_redemption_service.dart';
 
 /// Wallet home — the dark navy anchor of the app (design brief §1).
@@ -231,6 +232,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
                 'admin' => AdminScreen(user: widget.user),
                 'virtual-card' => const VirtualCardScreen(),
                 'betting' => const BettingScreen(),
+                'stellar' => const StellarWalletScreen(),
                 'savings' => SavingsScreen(user: widget.user),
                 'loans' => LoansScreen(user: widget.user),
                 'agent' => AgentScreen(user: widget.user),
@@ -246,6 +248,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
               PopupMenuItem(value: 'standing-plans', child: Text('Standing plans')),
               PopupMenuItem(value: 'virtual-card', child: Text('Virtual card')),
               PopupMenuItem(value: 'betting', child: Text('Betting funding')),
+              PopupMenuItem(value: 'stellar', child: Text('Stellar wallet (beta)')),
               PopupMenuItem(value: 'admin', child: Text('Admin')),
               PopupMenuItem(value: 'savings', child: Text('Savings goals')),
               PopupMenuItem(value: 'loans', child: Text('Loans')),
