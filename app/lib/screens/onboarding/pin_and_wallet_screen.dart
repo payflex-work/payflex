@@ -182,10 +182,10 @@ class _PinAndWalletScreenState extends State<PinAndWalletScreen> {
     return Theme(
       data: PayFlexTheme.dark,
       child: Scaffold(
-        backgroundColor: PfColors.navy,
+        backgroundColor: Colors.transparent, // reveal PfBackground waves
         appBar: AppBar(
           title: const Text('Secure your wallet'),
-          backgroundColor: PfColors.navy,
+          backgroundColor: Colors.transparent,
         ),
         body: SafeArea(
           child: Center(

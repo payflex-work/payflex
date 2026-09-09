@@ -8,6 +8,7 @@ import '../theme/payflex_tokens.dart';
 import '../theme/payflex_theme.dart';
 import '../widgets/pf_buttons.dart';
 import '../widgets/pf_states.dart';
+import 'about_screen.dart';
 import 'onboarding/create_user_screen.dart';
 
 /// Profile & settings (design brief §3): account tier and verification
@@ -170,10 +171,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Theme(
       data: PayFlexTheme.dark,
       child: Scaffold(
-        backgroundColor: PfColors.navy,
+        backgroundColor: Colors.transparent, // reveal PfBackground waves
         appBar: AppBar(
           title: const Text('Settings'),
-          backgroundColor: PfColors.navy,
+          backgroundColor: Colors.transparent,
         ),
         body: Stack(
           children: [
@@ -400,7 +401,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         icon: Icons.info_outline_rounded,
                         title: 'About PayFlex',
                         subtitle: 'v0.1.0 · BMONI smart-wallet rails',
-                        onTap: _showAbout,
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                                builder: (_) => const AboutScreen()),
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -523,52 +529,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   width: double.infinity,
                   child: PfPrimaryButton(
                     label: 'Got it',
-                    onPressed: () => Navigator.of(context).pop(),
-                    height: 46,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showAbout() {
-    showDialog<void>(
-      context: context,
-      builder: (context) => Theme(
-        data: PayFlexTheme.dark,
-        child: Dialog(
-          backgroundColor: PfColors.navyRaised,
-          surfaceTintColor: Colors.transparent,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(PfRadius.lg),
-            side: const BorderSide(color: PfColors.navyBorder),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(22),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'About PayFlex',
-                  style: TextStyle(color: PfColors.onNavy, fontSize: 17, fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 10),
-                const Text(
-                  'PayFlex 0.1.0 — mobile-first microfinance on BMONI smart-wallet '
-                  'rails. Savings, loans and agent services are PayFlex layers on '
-                  'top; money always settles through your own wallet.',
-                  style: TextStyle(color: PfColors.onNavyMuted, fontSize: 13.5, height: 1.5),
-                ),
-                const SizedBox(height: 18),
-                SizedBox(
-                  width: double.infinity,
-                  child: PfPrimaryButton(
-                    label: 'Close',
                     onPressed: () => Navigator.of(context).pop(),
                     height: 46,
                   ),

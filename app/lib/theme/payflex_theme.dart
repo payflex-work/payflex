@@ -17,9 +17,15 @@ import 'payflex_tokens.dart';
 class PayFlexTheme {
   PayFlexTheme._();
 
+  // Light chrome paints its own opaque paper; dark chrome is transparent
+  // so the brand waves wallpaper (mounted once behind the Navigator via
+  // MaterialApp.builder → PfBackground) shows through on every navy
+  // surface. `background` still feeds the ColorScheme/surfaces.
   static final ThemeData light = _build(
     brightness: Brightness.light,
     background: PfColors.offWhite,
+    scaffoldColor: PfColors.offWhite,
+    appBarColor: PfColors.offWhite,
     surface: PfColors.surface,
     surfaceRaised: PfColors.surfaceAlt,
     border: PfColors.line,
@@ -37,6 +43,8 @@ class PayFlexTheme {
   static final ThemeData dark = _build(
     brightness: Brightness.dark,
     background: PfColors.navy,
+    scaffoldColor: Colors.transparent,
+    appBarColor: Colors.transparent,
     surface: PfColors.navyRaised,
     surfaceRaised: PfColors.navyRaised2,
     border: PfColors.navyBorder,
@@ -54,6 +62,8 @@ class PayFlexTheme {
   static ThemeData _build({
     required Brightness brightness,
     required Color background,
+    required Color scaffoldColor,
+    required Color appBarColor,
     required Color surface,
     required Color surfaceRaised,
     required Color border,
@@ -91,7 +101,7 @@ class PayFlexTheme {
       useMaterial3: true,
       brightness: brightness,
       colorScheme: scheme,
-      scaffoldBackgroundColor: background,
+      scaffoldBackgroundColor: scaffoldColor,
     );
 
     final textTheme = base.textTheme.copyWith(
@@ -195,7 +205,7 @@ class PayFlexTheme {
     return base.copyWith(
       textTheme: textTheme,
       appBarTheme: AppBarTheme(
-        backgroundColor: background,
+        backgroundColor: appBarColor,
         foregroundColor: textPrimary,
         elevation: 0,
         scrolledUnderElevation: 0,

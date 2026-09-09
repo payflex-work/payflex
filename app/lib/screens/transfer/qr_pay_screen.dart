@@ -69,10 +69,10 @@ class _QrPayScreenState extends State<QrPayScreen> with SingleTickerProviderStat
     return Theme(
       data: PayFlexTheme.dark,
       child: Scaffold(
-        backgroundColor: PfColors.navy,
+        backgroundColor: Colors.transparent, // reveal PfBackground waves
         appBar: AppBar(
           title: const Text('QR Pay'),
-          backgroundColor: PfColors.navy,
+          backgroundColor: Colors.transparent,
           actions: [
             IconButton(
               icon: const Icon(Icons.shield_outlined, color: PfColors.emerald),
@@ -870,14 +870,14 @@ class _ConfirmPaymentScreenState extends State<_ConfirmPaymentScreen> {
     return Theme(
       data: PayFlexTheme.dark,
       child: Scaffold(
-        backgroundColor: PfColors.navy,
+        backgroundColor: Colors.transparent, // reveal PfBackground waves
         appBar: AppBar(
           leading: IconButton(
             icon: const Icon(Icons.close_rounded, color: PfColors.onNavy),
             onPressed: _signing ? null : () => Navigator.of(context).pop(false),
           ),
           title: Text(isOffline ? 'Confirm offline payment' : 'Confirm payment'),
-          backgroundColor: PfColors.navy,
+          backgroundColor: Colors.transparent,
         ),
         body: SafeArea(
           child: Padding(
@@ -1021,10 +1021,10 @@ class _OfflineConfirmationBroadcastScreen extends StatelessWidget {
     return Theme(
       data: PayFlexTheme.dark,
       child: Scaffold(
-        backgroundColor: PfColors.navy,
+        backgroundColor: Colors.transparent, // reveal PfBackground waves
         appBar: AppBar(
           title: const Text('Payment verified'),
-          backgroundColor: PfColors.navy,
+          backgroundColor: Colors.transparent,
           leading: IconButton(
             icon: const Icon(Icons.close_rounded),
             onPressed: () => Navigator.of(context).pop(),

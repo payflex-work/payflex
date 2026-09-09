@@ -89,7 +89,7 @@ class _PfConfirmationScreenState extends State<PfConfirmationScreen>
     return Theme(
       data: PayFlexTheme.dark,
       child: Scaffold(
-        backgroundColor: PfColors.navy,
+        backgroundColor: Colors.transparent, // reveal PfBackground waves
         body: SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(

@@ -148,7 +148,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
     return Theme(
       data: PayFlexTheme.dark,
       child: Scaffold(
-        backgroundColor: PfColors.navy,
+        backgroundColor: Colors.transparent, // reveal PfBackground waves
         body: Stack(
           children: [
             // Flat watermark of the ribbon, low opacity, behind content.
@@ -638,10 +638,10 @@ class _TransactionHistoryScreenState extends State<TransactionHistoryScreen> {
     return Theme(
       data: PayFlexTheme.dark,
       child: Scaffold(
-        backgroundColor: PfColors.navy,
+        backgroundColor: Colors.transparent, // reveal PfBackground waves
         appBar: AppBar(
           title: Text('${widget.currency} · Activity'),
-          backgroundColor: PfColors.navy,
+          backgroundColor: Colors.transparent,
         ),
         body: _loading
             ? const Center(child: PfBrandedLoader(size: 52))

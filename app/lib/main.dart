@@ -5,9 +5,11 @@ import 'services/session_manager.dart';
 import 'services/wallet_service.dart';
 import 'theme/payflex_tokens.dart';
 import 'theme/payflex_theme.dart';
+import 'widgets/pf_background.dart';
 import 'widgets/pf_mark.dart';
 import 'widgets/pf_motion.dart';
 import 'screens/onboarding/create_user_screen.dart';
+import 'screens/onboarding/intro_screen.dart';
 import 'screens/unlock_screen.dart';
 import 'screens/wallet_home_screen.dart';
 
@@ -31,6 +33,14 @@ class PayFlexApp extends StatelessWidget {
         theme: PayFlexTheme.light,
         darkTheme: PayFlexTheme.dark,
         themeMode: mode,
+        // The brand waves wallpaper lives ONCE behind every route:
+        // MaterialApp.builder wraps the Navigator, so all screens —
+        // current and future — sit on the same ambient art without each
+        // Scaffold having to paint it. Opaque scaffolds (light forms,
+        // dialogs) simply cover it; transparent navy scaffolds reveal it.
+        builder: (context, child) => PfBackground(
+          child: child ?? const SizedBox.shrink(),
+        ),
         // One consistent restrained transition for every route (design
         // brief §2, item 4) — configured per-theme in payflex_theme.dart.
         home: const _StartupGate(),
@@ -65,9 +75,20 @@ class _StartupGateState extends State<_StartupGate> {
     final appUserId = await _store.getAppUserId();
     if (!mounted) return;
     if (appUserId == null) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const CreateUserScreen()),
-      );
+      // First-run (or post-sign-out): run the intro carousel once before
+      // account creation — it only gates a brand-new start, never the
+      // resume/PIN paths below.
+      final seenIntro = await _store.hasSeenIntro();
+      if (!mounted) return;
+      if (!seenIntro) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => IntroScreen(store: _store)),
+        );
+      } else {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const CreateUserScreen()),
+        );
+      }
       return;
     }
 
@@ -114,10 +135,11 @@ class _StartupGateState extends State<_StartupGate> {
   }
 }
 
-/// Branded launch surface — flat deep navy, the approved logo mark, and
-/// the ribbon loader tracing underneath while the startup decision runs.
-/// Dark-default per the design brief (§1: splash lives on the logo's
-/// navy, never a default spinner).
+/// Branded launch surface — the brand waves wallpaper (PfBackground,
+/// mounted app-wide), the approved logo mark, and the ribbon loader
+/// tracing underneath while the startup decision runs. Dark-default per
+/// the design brief (§1: splash lives on the logo's navy, never a default
+/// spinner).
 class _SplashView extends StatelessWidget {
   const _SplashView();
 
@@ -126,7 +148,7 @@ class _SplashView extends StatelessWidget {
     return Theme(
       data: PayFlexTheme.dark,
       child: Scaffold(
-        backgroundColor: PfColors.navy,
+        backgroundColor: Colors.transparent, // reveal PfBackground waves
         body: SafeArea(
           child: Column(
             children: [

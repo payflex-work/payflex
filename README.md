@@ -115,7 +115,12 @@ confirmation flow (Review → Authenticate → Submit → Result → Record) —
 means every money-moving screen (transfers, QR Pay, savings, loans, agent
 mode, split-bill, send-via-link, Safebox) goes through the same
 `signAndSubmitTransfer` + confirmation pattern rather than each building
-its own. `flutter analyze` clean, `flutter test` clean; not yet visually
+its own. The brand waves wallpaper (`PfBackground`) mounts once behind
+every route via `MaterialApp.builder` — navy scaffolds are transparent to
+reveal it, light "business" surfaces stay opaque — and the approved brand
+poster (`PfBrandPoster`) anchors the intro carousel (first launch only,
+via `LocalUserStore.introSeen`) and the About page. `flutter analyze`
+clean, `flutter test` clean; not yet visually
 verified on a real device or emulator — this environment has no
 display/emulator, so someone needs to actually look at it running before
 calling the visual pass done.
@@ -150,9 +155,11 @@ flutter run --dart-define=BACKEND_BASE_URL=http://10.0.2.2:3000
 
 ## Current verification status
 
-- Backend: 51 unit tests passing across 7 suites; `tsc --noEmit` clean;
-  all 6 sandbox scripts pass against the live BMONI sandbox.
-- Flutter: `flutter analyze` — 0 errors; `flutter test` — 23/23 passing.
+- Backend: 97 unit tests passing across 14 suites (verified this pass);
+  `tsc --noEmit` clean; all sandbox scripts last verified green against
+  the live BMONI sandbox per `backend/README.md`.
+- Flutter: `flutter analyze` — 0 errors; `flutter test` — 36/36 passing
+  (23 offline-protocol + 13 Stellar rail).
 - Not yet done: `flutter build apk` (no Android SDK in this environment),
   a real on-device/emulator visual walkthrough (no display/emulator
   here), production credentials, webhook signing, and real secrets
@@ -161,12 +168,23 @@ flutter run --dart-define=BACKEND_BASE_URL=http://10.0.2.2:3000
 
 ## Not built
 
-**Standing Plans, a virtual card, a betting page, and an admin panel do
-not exist anywhere in this codebase** — not stubbed, not partial. If a
-future prompt references them as already built, that's not accurate;
-check before trusting it. Card issuance and gambling both carry real
-compliance weight that shouldn't be guessed at — building either needs an
-explicit product/compliance spec first, not an assumption from a prompt.
+**Virtual cards and betting funding are honest stubs, not features** —
+each is a screen (`app/lib/screens/virtual_card_screen.dart`,
+`betting_screen.dart`) that says so plainly, with zero backend support:
+card issuance needs a card-network/processor partnership and betting
+funding needs jurisdiction-dependent licensing, and neither exists in
+this codebase. Never render a fake card number/CVV or a working-looking
+bet flow. If a future prompt references either as already built, that's
+not accurate; check before trusting it. The compliance weight they carry
+shouldn't be guessed at — building either needs an explicit
+product/compliance spec first, not an assumption from a prompt.
+
+By contrast, **Standing Plans and the Admin panel are built** —
+recurring payments are real signed transfers on a scheduler
+(`backend/src/standing-plans/`), and the admin surface is gated
+server-side by `AdminGuard`, with the screen showing "admin access
+required" on a 403 rather than pretending the check is client-side
+(`backend/src/admin/`, `app/lib/screens/admin_screen.dart`).
 
 ## Non-negotiable engineering rules (see docs/BUILD_PROMPT.md §7)
 
