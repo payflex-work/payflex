@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="app/assets/brand/payflex_logo.png" alt="PayFlex logo" width="140">
+</p>
+
 # PayFlex
 
 A mobile-first microfinance app (in the spirit of Moniepoint / OPay) built
