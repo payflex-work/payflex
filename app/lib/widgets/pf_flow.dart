@@ -186,9 +186,9 @@ class _PfConfirmationScreenState extends State<PfConfirmationScreen>
                                   const SizedBox(height: 10),
                                   Row(
                                     children: [
-                                      Text(
+                                      const Text(
                                         'Status',
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           color: PfColors.onNavyMuted,
                                           fontSize: 12.5,
                                         ),
@@ -272,9 +272,9 @@ class PfReceiptScreen extends StatelessWidget {
               children: [
                 Container(
                   padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
+                  decoration: const BoxDecoration(
                     color: PfColors.navy,
-                    borderRadius: const BorderRadius.vertical(
+                    borderRadius: BorderRadius.vertical(
                       top: Radius.circular(PfRadius.lg),
                     ),
                     boxShadow: PfShadow.onDark,
@@ -388,7 +388,7 @@ class PfReceiptScreen extends StatelessWidget {
                         value: o.statusLabel ?? 'Settling',
                       ),
                       const SizedBox(height: 4),
-                      _ReceiptRow(
+                      const _ReceiptRow(
                         label: 'Settlement',
                         value: 'Signed on your device · BMONI smart wallet',
                       ),
@@ -427,7 +427,7 @@ class _ReceiptRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textStyle = const TextStyle(
+    const textStyle = TextStyle(
       color: PfColors.ink,
       fontSize: 13.5,
       fontWeight: FontWeight.w600,

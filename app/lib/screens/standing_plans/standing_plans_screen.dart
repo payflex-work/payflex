@@ -111,7 +111,7 @@ class _StandingPlansScreenState extends State<StandingPlansScreen> {
       final proposal = await _api.payStandingPlanPayment(widget.user.id, payment.id);
       if (!mounted) return;
       final signed = await signAndSubmitTransfer(context, _api, widget.user.id, proposal.id);
-      if (signed != null) {
+      if (signed != null && mounted) {
         await showPfConfirmation(
           context,
           outcome: PfFlowOutcome(
@@ -225,7 +225,7 @@ class _StandingPlansScreenState extends State<StandingPlansScreen> {
               SizedBox(
                 width: 110,
                 child: DropdownButtonFormField<String>(
-                  value: _currency,
+                  initialValue: _currency,
                   decoration: const InputDecoration(labelText: 'Currency'),
                   items: const [
                     DropdownMenuItem(value: 'NGN', child: Text('NGN')),
@@ -238,7 +238,7 @@ class _StandingPlansScreenState extends State<StandingPlansScreen> {
           ),
           const SizedBox(height: 10),
           DropdownButtonFormField<String>(
-            value: _frequency,
+            initialValue: _frequency,
             decoration: const InputDecoration(labelText: 'Frequency'),
             items: const [
               DropdownMenuItem(value: 'DAILY', child: Text('Daily')),

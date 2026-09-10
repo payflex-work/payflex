@@ -266,7 +266,6 @@ class FountainDecoder {
   int? _k;
   int? _totalLength;
   String? _expectedChecksum;
-  int? _blockSize;
 
   final Map<int, Uint8List> _solvedBlocks = {};
   final List<_Equation> _pendingEquations = [];
@@ -303,7 +302,6 @@ class FountainDecoder {
       _k = packet.k;
       _totalLength = packet.totalLength;
       _expectedChecksum = packet.checksum;
-      _blockSize = packet.data.length;
     } else if (packet.sessionId != _activeSessionId) {
       // Ignore frames from other concurrent or past sessions
       return false;
@@ -433,7 +431,6 @@ class FountainDecoder {
     _k = null;
     _totalLength = null;
     _expectedChecksum = null;
-    _blockSize = null;
     _solvedBlocks.clear();
     _pendingEquations.clear();
     _receivedSeeds.clear();

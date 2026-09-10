@@ -6,7 +6,6 @@ import 'package:payflex/protocol/crypto_utils.dart';
 import 'package:payflex/protocol/fountain_coder.dart';
 import 'package:payflex/protocol/payment_protocol.dart';
 import 'package:payflex/services/api_client.dart';
-import 'package:payflex/services/device_key_service.dart';
 import 'package:payflex/services/offline_reserve_service.dart';
 import 'package:payflex/services/offline_redemption_service.dart';
 import 'package:payflex/services/wallet_service.dart';
@@ -89,7 +88,6 @@ void main() {
   group('E2E Two-Device Offline Payment & Reconciliation Loop', () {
     // Device A (Receiver / Merchant: Amina Cafe)
     final deviceASeed = CryptoUtils.generateEd25519Seed();
-    const merchantAppUserId = 'usr_merchant_amina_01';
     const merchantBmoniId = 'bmoni_merchant_amina_01';
 
     // Device B (Sender / Payer: Babatunde)

@@ -5,7 +5,6 @@ import '../../utils/money.dart';
 import '../../models/safebox.dart';
 import '../../services/api_client.dart';
 import '../../widgets/pf_balance_card.dart';
-import '../../widgets/pf_buttons.dart';
 import '../../widgets/pf_motion.dart';
 import '../../widgets/pf_states.dart';
 import 'safebox_create_screen.dart';

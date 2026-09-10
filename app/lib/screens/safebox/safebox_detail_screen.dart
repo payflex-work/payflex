@@ -3,7 +3,6 @@ import '../../theme/payflex_tokens.dart';
 import '../../theme/payflex_theme.dart';
 import '../../utils/money.dart';
 import '../../models/safebox.dart';
-import '../../models/transfer.dart';
 import '../../services/api_client.dart';
 import '../../services/local_user_store.dart';
 import '../../services/transfer_flow.dart';
@@ -36,7 +35,6 @@ class _SafeboxDetailScreenState extends State<SafeboxDetailScreen> {
   final ApiClient _api = ApiClient();
   bool _isLoading = true;
   Safebox? _box;
-  List<SafeboxMember> _members = [];
   List<SafeboxTransaction> _transactions = [];
   SafeboxRole _userRole = SafeboxRole.member;
 
@@ -59,7 +57,6 @@ class _SafeboxDetailScreenState extends State<SafeboxDetailScreen> {
       if (mounted) {
         setState(() {
           _box = detail.safebox;
-          _members = detail.members;
           _transactions = txs;
           _userRole = r;
           _isLoading = false;
@@ -191,6 +188,7 @@ class _SafeboxDetailScreenState extends State<SafeboxDetailScreen> {
     // release server-side (see SafeboxService.withdraw) — but a PIN is
     // still required as a deliberate re-confirmation step before moving
     // pool funds, matching every interactive money movement in this app.
+    if (!mounted) return;
     final pin = await promptForPin(context);
     if (pin == null || pin.isEmpty) return;
 
@@ -355,7 +353,6 @@ class _SafeboxDetailScreenState extends State<SafeboxDetailScreen> {
 
   Widget _buildTransactionRow(SafeboxTransaction tx) {
     final isContribution = tx.type == SafeboxTxType.contribution;
-    final tone = isContribution ? PfTone.success : PfTone.warn;
     final toneColor = isContribution ? PfColors.emerald : PfColors.warn;
     final action = isContribution ? 'contributed' : 'withdrew';
 

@@ -85,10 +85,10 @@ class _AdminScreenState extends State<AdminScreen> {
         body: _loading
             ? const Center(child: PfBrandedLoader(size: 52))
             : _forbidden
-                ? Center(
+                ? const Center(
                     child: Padding(
-                      padding: const EdgeInsets.all(PfSpace.xl),
-                      child: const PfEmptyState(
+                      padding: EdgeInsets.all(PfSpace.xl),
+                      child: PfEmptyState(
                         icon: Icons.lock_outline_rounded,
                         title: 'Admin access required',
                         message: "Your account isn't flagged as an admin. "

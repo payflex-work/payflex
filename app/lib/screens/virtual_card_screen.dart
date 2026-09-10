@@ -27,9 +27,9 @@ class VirtualCardScreen extends StatelessWidget {
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 560),
-              child: Padding(
-                padding: const EdgeInsets.all(PfSpace.xl),
-                child: const PfEmptyState(
+              child: const Padding(
+                padding: EdgeInsets.all(PfSpace.xl),
+                child: PfEmptyState(
                   icon: Icons.credit_card_outlined,
                   title: 'Virtual cards are coming',
                   message:

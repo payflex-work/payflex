@@ -230,9 +230,9 @@ class _PinAndWalletScreenState extends State<PinAndWalletScreen> {
       );
     }
     if (_busy && _step == _Step.provisionWallet) {
-      return Column(
+      return const Column(
         mainAxisAlignment: MainAxisAlignment.center,
-        children: const [
+        children: [
           PfBrandedLoader(size: 64),
           SizedBox(height: 22),
           Text(
@@ -284,7 +284,7 @@ class _PinAndWalletScreenState extends State<PinAndWalletScreen> {
             fontWeight: FontWeight.w700,
             letterSpacing: 10,
           ),
-          decoration: InputDecoration(
+          decoration: const InputDecoration(
             labelText: 'PIN',
             counterText: '',
             filled: true,
@@ -292,10 +292,10 @@ class _PinAndWalletScreenState extends State<PinAndWalletScreen> {
           ),
         ),
         const SizedBox(height: 6),
-        Row(
+        const Row(
           children: [
-            const Icon(Icons.shield_outlined, size: 14, color: PfColors.onNavyFaint),
-            const SizedBox(width: 6),
+            Icon(Icons.shield_outlined, size: 14, color: PfColors.onNavyFaint),
+            SizedBox(width: 6),
             Expanded(
               child: Text(
                 'Used to sign every transfer — it never leaves this device.',

@@ -25,9 +25,9 @@ class BettingScreen extends StatelessWidget {
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 560),
-              child: Padding(
-                padding: const EdgeInsets.all(PfSpace.xl),
-                child: const PfEmptyState(
+              child: const Padding(
+                padding: EdgeInsets.all(PfSpace.xl),
+                child: PfEmptyState(
                   icon: Icons.sports_soccer_outlined,
                   title: 'Pending licensing',
                   message:

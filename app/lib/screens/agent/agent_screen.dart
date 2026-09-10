@@ -183,7 +183,7 @@ class _AgentScreenState extends State<AgentScreen> {
                     children: [
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          value: _currency,
+                          initialValue: _currency,
                           decoration: const InputDecoration(labelText: 'Currency'),
                           items: const [
                             DropdownMenuItem(value: 'NGN', child: Text('NGN')),

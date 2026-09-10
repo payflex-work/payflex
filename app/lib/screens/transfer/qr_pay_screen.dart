@@ -117,7 +117,6 @@ class _MyQrTabState extends State<_MyQrTab> {
   String _currency = 'NGN';
   bool _offlineMode = true; // Default to the generative animated offline transport
   String? _onlineToken;
-  PaymentRequest? _offlineRequest;
   FountainEncoder? _fountainEncoder;
   String? _error;
   bool _busy = false;
@@ -134,7 +133,6 @@ class _MyQrTabState extends State<_MyQrTab> {
       _busy = true;
       _error = null;
       _onlineToken = null;
-      _offlineRequest = null;
       _fountainEncoder = null;
     });
 
@@ -173,7 +171,6 @@ class _MyQrTabState extends State<_MyQrTab> {
         final encoder = FountainEncoder.fromString(request.serialize());
 
         setState(() {
-          _offlineRequest = request;
           _fountainEncoder = encoder;
         });
       } else {
@@ -230,7 +227,6 @@ class _MyQrTabState extends State<_MyQrTab> {
                         onTap: () => setState(() {
                           _offlineMode = true;
                           _onlineToken = null;
-                          _offlineRequest = null;
                           _fountainEncoder = null;
                         }),
                       ),
@@ -242,7 +238,6 @@ class _MyQrTabState extends State<_MyQrTab> {
                         onTap: () => setState(() {
                           _offlineMode = false;
                           _onlineToken = null;
-                          _offlineRequest = null;
                           _fountainEncoder = null;
                         }),
                       ),
@@ -552,7 +547,7 @@ class _ScanToPayTabState extends State<_ScanToPayTab> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '${formatMoney((conf.amountMinorUnits / 100.0).toStringAsFixed(2), conf.currency)}',
+              formatMoney((conf.amountMinorUnits / 100.0).toStringAsFixed(2), conf.currency),
               style: PfMoneyType.medium.copyWith(color: Colors.white),
             ),
             const SizedBox(height: 8),
@@ -1127,7 +1122,7 @@ class _OfflineReserveSheetState extends State<_OfflineReserveSheet> {
   final _reserveService = OfflineReserveService();
   final _redemptionService = OfflineRedemptionService();
   final _amountController = TextEditingController(text: '20000');
-  String _currency = 'NGN';
+  final String _currency = 'NGN';
   ReserveAllowance? _allowance;
   List<OfflineTransactionRecord> _records = [];
   bool _busy = false;

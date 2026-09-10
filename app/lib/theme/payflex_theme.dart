@@ -180,11 +180,11 @@ class PayFlexTheme {
         borderRadius: BorderRadius.circular(PfRadius.sm),
         borderSide: BorderSide(color: accent, width: 1.6),
       ),
-      errorBorder: OutlineInputBorder(
+      errorBorder: const OutlineInputBorder(
         borderRadius: BorderRadius.circular(PfRadius.sm),
         borderSide: BorderSide(color: PfColors.danger),
       ),
-      focusedErrorBorder: OutlineInputBorder(
+      focusedErrorBorder: const OutlineInputBorder(
         borderRadius: BorderRadius.circular(PfRadius.sm),
         borderSide: BorderSide(color: PfColors.danger, width: 1.6),
       ),
@@ -257,7 +257,7 @@ class PayFlexTheme {
         style: buttonStyle.copyWith(
           foregroundColor: WidgetStatePropertyAll(accent),
           side: WidgetStatePropertyAll(BorderSide(color: borderStrong)),
-          backgroundColor: WidgetStatePropertyAll(Colors.transparent),
+          backgroundColor: const WidgetStatePropertyAll(Colors.transparent),
         ),
       ),
       textButtonTheme: TextButtonThemeData(

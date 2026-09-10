@@ -1,3 +1,5 @@
+library;
+
 /// Mirrors backend/prisma/schema.prisma's Phase 4 models. See the schema
 /// doc comments for why these are pure PayFlex ledger tables with no
 /// BMONI equivalent, built on top of the TransferService proposal flow.

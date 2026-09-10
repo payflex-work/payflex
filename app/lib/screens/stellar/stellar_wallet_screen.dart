@@ -327,12 +327,12 @@ class _StellarWalletScreenState extends State<StellarWalletScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: PfColors.offWhite,
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(PfSpace.xl),
+      builder: (context) => const Padding(
+        padding: EdgeInsets.all(PfSpace.xl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
+          children: [
             Text('About the Stellar wallet', style: TextStyle(color: PfColors.ink, fontSize: 16, fontWeight: FontWeight.w700)),
             SizedBox(height: 10),
             Text(

@@ -61,7 +61,7 @@ class _SavingsScreenState extends State<SavingsScreen> {
       final proposal = await _api.payContribution(widget.user.id, contributionId);
       if (!mounted) return;
       final signed = await signAndSubmitTransfer(context, _api, widget.user.id, proposal.id);
-      if (signed != null) {
+      if (signed != null && mounted) {
         await showPfConfirmation(
           context,
           outcome: _outcome(signed, 'Contribution made',
@@ -359,7 +359,7 @@ class _CreateSavingsGoalScreenState extends State<CreateSavingsGoalScreen> {
                     children: [
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          value: _currency,
+                          initialValue: _currency,
                           decoration: const InputDecoration(labelText: 'Currency'),
                           items: const [
                             DropdownMenuItem(value: 'NGN', child: Text('NGN')),
@@ -371,7 +371,7 @@ class _CreateSavingsGoalScreenState extends State<CreateSavingsGoalScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          value: _frequency,
+                          initialValue: _frequency,
                           decoration: const InputDecoration(labelText: 'Frequency'),
                           items: const [
                             DropdownMenuItem(value: 'DAILY', child: Text('Daily')),

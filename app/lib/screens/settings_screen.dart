@@ -348,8 +348,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     borderRadius: BorderRadius.circular(PfRadius.md),
                     border: Border.all(color: PfColors.navyBorder),
                   ),
-                  child: Column(
-                    children: const [
+                  child: const Column(
+                    children: [
                       ListTile(
                         dense: true,
                         leading: Icon(Icons.key_outlined, color: PfColors.onNavyMuted, size: 22),

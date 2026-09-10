@@ -288,7 +288,7 @@ class _WalletHomeScreenState extends State<WalletHomeScreen> {
               child: PfInlineError(message: _error!, onRetry: _load),
             ),
           if (_wallets.isEmpty && _error == null)
-            PfEmptyState(
+            const PfEmptyState(
               icon: Icons.account_balance_wallet_outlined,
               title: 'No wallets yet',
               message: 'Finish onboarding and your first wallet will appear here.',

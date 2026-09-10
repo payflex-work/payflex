@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../models/transfer.dart';
 import '../utils/format.dart';
 import 'api_client.dart';
 import 'offline_reserve_service.dart';

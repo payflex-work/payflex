@@ -55,12 +55,12 @@ class _SendViaLinkScreenState extends State<SendViaLinkScreen>
         appBar: AppBar(
           title: const Text('Send via link'),
           backgroundColor: PfColors.offWhite,
-          bottom: TabBar(
+          bottom: const TabBar(
             indicatorColor: PfColors.royalBlue,
             labelColor: PfColors.ink,
             unselectedLabelColor: PfColors.inkMuted,
-            labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-            tabs: const [Tab(text: 'Send'), Tab(text: 'Claim')],
+            labelStyle: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+            tabs: [Tab(text: 'Send'), Tab(text: 'Claim')],
           ),
         ),
         body: TabBarView(
@@ -231,7 +231,7 @@ class _SendTabState extends State<_SendTab> {
                 SizedBox(
                   width: 116,
                   child: DropdownButtonFormField<String>(
-                    value: _currency,
+                    initialValue: _currency,
                     decoration: const InputDecoration(labelText: 'Currency'),
                     items: const [
                       DropdownMenuItem(value: 'NGN', child: Text('NGN')),

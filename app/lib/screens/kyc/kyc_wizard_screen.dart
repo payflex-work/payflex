@@ -451,7 +451,7 @@ class _KycWizardScreenState extends State<KycWizardScreen> {
         ),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
-          value: _gender,
+          initialValue: _gender,
           decoration: const InputDecoration(labelText: 'Gender'),
           items: (_options?.genders ?? [])
               .map((g) => DropdownMenuItem(value: g, child: Text(g)))
@@ -490,7 +490,7 @@ class _KycWizardScreenState extends State<KycWizardScreen> {
         const SizedBox(height: 22),
         _fieldLabel('Employment & purpose'),
         DropdownButtonFormField<String>(
-          value: _employmentStatus,
+          initialValue: _employmentStatus,
           decoration: const InputDecoration(labelText: 'Employment status'),
           items: (_options?.employmentStatuses ?? [])
               .map((s) => DropdownMenuItem(value: s, child: Text(s)))
@@ -510,15 +510,19 @@ class _KycWizardScreenState extends State<KycWizardScreen> {
           ),
           onSubmitted: _searchOccupations,
         ),
-        ..._occupationResults.map(
-          (o) => RadioListTile<KycOccupation>(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 6),
-            dense: true,
-            title: Text(o.displayName, style: const TextStyle(fontSize: 14)),
-            value: o,
-            groupValue: _selectedOccupation,
-            activeColor: PfColors.royalBlue,
-            onChanged: (v) => setState(() => _selectedOccupation = v),
+        RadioGroup<KycOccupation>(
+          groupValue: _selectedOccupation,
+          onChanged: (v) => setState(() => _selectedOccupation = v),
+          child: Column(
+            children: _occupationResults.map(
+              (o) => RadioListTile<KycOccupation>(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 6),
+                dense: true,
+                title: Text(o.displayName, style: const TextStyle(fontSize: 14)),
+                value: o,
+                activeColor: PfColors.royalBlue,
+              ),
+            ).toList(),
           ),
         ),
         const SizedBox(height: 6),
@@ -534,7 +538,7 @@ class _KycWizardScreenState extends State<KycWizardScreen> {
         ),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
-          value: _sourceOfFunds,
+          initialValue: _sourceOfFunds,
           decoration: const InputDecoration(labelText: 'Source of funds'),
           items: (_options?.fundsSources ?? [])
               .map((s) => DropdownMenuItem(value: s, child: Text(s)))
@@ -543,7 +547,7 @@ class _KycWizardScreenState extends State<KycWizardScreen> {
         ),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
-          value: _accountPurpose,
+          initialValue: _accountPurpose,
           decoration: const InputDecoration(labelText: 'Account purpose'),
           items: (_options?.accountPurposes ?? [])
               .map((s) => DropdownMenuItem(value: s, child: Text(s)))
@@ -612,7 +616,7 @@ class _KycWizardScreenState extends State<KycWizardScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               DropdownButtonFormField<String>(
-                value: _idType,
+                initialValue: _idType,
                 decoration: const InputDecoration(labelText: 'Document type'),
                 items: _identificationTypes
                     .map((t) => DropdownMenuItem(value: t, child: Text(t)))
@@ -653,7 +657,7 @@ class _KycWizardScreenState extends State<KycWizardScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               DropdownButtonFormField<String>(
-                value: _poaType,
+                initialValue: _poaType,
                 decoration: const InputDecoration(labelText: 'Document type'),
                 items: _proofOfAddressTypes
                     .map((t) => DropdownMenuItem(value: t, child: Text(t)))
@@ -804,11 +808,11 @@ class _KycWizardScreenState extends State<KycWizardScreen> {
           const SizedBox(height: 16),
         ],
         if (ready) ...[
-          PfPanel(
-            padding: const EdgeInsets.all(18),
+          const PfPanel(
+            padding: EdgeInsets.all(18),
             color: PfColors.successWash,
             showShadow: false,
-            child: const Row(
+            child: Row(
               children: [
                 Icon(Icons.verified_outlined, color: PfColors.success, size: 24),
                 SizedBox(width: 12),
@@ -883,8 +887,8 @@ class _KycWizardScreenState extends State<KycWizardScreen> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PfPanel(
-            child: const Text(
+          const PfPanel(
+            child: Text(
               'USD onboarding runs a live Sumsub identity check. Have a real, '
               'well-lit capture of your ID and a selfie ready.',
               style: TextStyle(color: PfColors.inkMuted, fontSize: 13.5, height: 1.5),

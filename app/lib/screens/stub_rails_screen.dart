@@ -105,7 +105,7 @@ class _RailRow extends StatelessWidget {
               ],
             ),
           ),
-          PfStatusChip(label: 'Soon', tone: PfTone.muted),
+          const PfStatusChip(label: 'Soon', tone: PfTone.muted),
         ],
       ),
     );

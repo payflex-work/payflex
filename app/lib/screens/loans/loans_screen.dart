@@ -93,7 +93,7 @@ class _LoansScreenState extends State<LoansScreen> {
       final proposal = await _api.payRepayment(widget.user.id, repaymentId);
       if (!mounted) return;
       final signed = await signAndSubmitTransfer(context, _api, widget.user.id, proposal.id);
-      if (signed != null) {
+      if (signed != null && mounted) {
         await showPfConfirmation(
           context,
           outcome: PfFlowOutcome(
@@ -194,7 +194,7 @@ class _LoansScreenState extends State<LoansScreen> {
               SizedBox(
                 width: 116,
                 child: DropdownButtonFormField<String>(
-                  value: _currency,
+                  initialValue: _currency,
                   decoration: const InputDecoration(labelText: 'Currency'),
                   items: const [
                     DropdownMenuItem(value: 'NGN', child: Text('NGN')),
@@ -295,7 +295,7 @@ class _LoansScreenState extends State<LoansScreen> {
                     Text(
                       loan.status == 'REJECTED'
                           ? 'Not approved'
-                          : '${loan.status.toLowerCase().split('_').map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}').join(' ')}',
+                          : loan.status.toLowerCase().split('_').map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}').join(' '),
                       style: const TextStyle(
                         color: PfColors.inkMuted,
                         fontSize: 12.5,

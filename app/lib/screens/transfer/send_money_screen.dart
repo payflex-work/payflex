@@ -85,7 +85,7 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
       headline: 'Sent',
       amount: signed.amount,
       currency: signed.currency,
-      caption: 'to ${_recipientLabel}',
+      caption: 'to $_recipientLabel',
       reference: signed.id,
       statusLabel: humanTransferStatus(signed.status),
       statusTone: transferTone(signed.status),
@@ -117,7 +117,7 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
                   const SizedBox(height: 4),
-                  Text(
+                  const Text(
                     'Send to another PayFlex account by PayTag, user ID or '
                     'wallet address.',
                     style: const TextStyle(
@@ -156,12 +156,12 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
                       _RecipientMode.bmoniUserId => 'The 36-char id from their profile.',
                       _RecipientMode.address => 'Their BMONI smart-wallet address.',
                     },
-                    style: const TextStyle(color: PfColors.inkFaint, fontSize: 12),
+                    style: TextStyle(color: PfColors.inkFaint, fontSize: 12),
                   ),
                   const SizedBox(height: 20),
-                  Text(
+                  const Text(
                     'Amount',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: PfColors.ink,
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
@@ -211,7 +211,7 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
                       parseAmount(_amountController.text) > 0
                           ? 'You\u2019re sending ${formatMoney(_amountController.text, _currency)}'
                           : 'Sign the payment with your 6-digit PIN when it\u2019s ready.',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: PfColors.inkMuted,
                         fontSize: 12.5,
                       ),

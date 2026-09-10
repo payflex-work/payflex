@@ -53,7 +53,7 @@ class _SplitBillScreenState extends State<SplitBillScreen> {
       final proposal = await _api.paySplitBillShare(widget.user.id, bill.id);
       if (!mounted) return;
       final signed = await signAndSubmitTransfer(context, _api, widget.user.id, proposal.id);
-      if (signed != null) {
+      if (signed != null && mounted) {
         await showPfConfirmation(
           context,
           outcome: _outcome(signed, 'Share paid',
@@ -175,7 +175,7 @@ class _SplitBillScreenState extends State<SplitBillScreen> {
                 ),
               ),
               PfStatusChip(
-                label: billComplete ? 'Paid up' : '${paidCount}/$total paid',
+                label: billComplete ? 'Paid up' : '$paidCount/$total paid',
                 tone: billComplete ? PfTone.success : PfTone.info,
               ),
             ],
@@ -365,7 +365,7 @@ class _CreateSplitBillScreenState extends State<CreateSplitBillScreen> {
                       SizedBox(
                         width: 120,
                         child: DropdownButtonFormField<String>(
-                          value: _currency,
+                          initialValue: _currency,
                           decoration: const InputDecoration(labelText: 'Currency'),
                           items: const [
                             DropdownMenuItem(value: 'NGN', child: Text('NGN')),
@@ -395,7 +395,7 @@ class _CreateSplitBillScreenState extends State<CreateSplitBillScreen> {
                             width: 30,
                             height: 30,
                             alignment: Alignment.center,
-                            decoration: BoxDecoration(
+                            decoration: const BoxDecoration(
                               color: PfColors.offWhite,
                               shape: BoxShape.circle,
                             ),

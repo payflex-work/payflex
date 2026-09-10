@@ -46,7 +46,7 @@ class PfBalanceCard extends StatelessWidget {
               child: Stack(
                 children: [
                   // Flat watermark — the ribbon, 5% white, no glow.
-                  Positioned(
+                  const Positioned(
                     right: -70,
                     bottom: -110,
                     child: PfWatermark(size: 260, color: Colors.white),
@@ -209,7 +209,7 @@ class PfWalletRow extends StatelessWidget {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   alignment: Alignment.center,
-                  child: PfMarkIcon(
+                  child: const PfMarkIcon(
                     size: 19,
                     color: PfColors.onNavyMuted,
                     strokeWidthFactor: 0.2,
