@@ -1,0 +1,44 @@
+name: Flutter tests
+
+# Analyze + unit-test the Flutter app (app/). Pure Dart tests — no device,
+# emulator, or running backend needed. The repo has no android/ios platform
+# folders (those are generated on dev machines via `flutter create`, see the
+# root README), and `flutter analyze` / `flutter test` don't require them.
+#
+# pubspec.yaml requires Dart ^3.9.0 / Flutter >=3.29.0 — the stable channel
+# satisfies both. Pin flutter-version here if you ever need a reproducible
+# SDK across runs.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: flutter-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Analyze + test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Tests
+        run: flutter test
