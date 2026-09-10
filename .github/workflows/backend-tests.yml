@@ -1,0 +1,44 @@
+name: Backend tests
+
+# Run the NestJS backend's unit test suite (Jest + ts-jest) on every push.
+# Pure unit tests — no Postgres/Redis needed; Prisma generate is included
+# because @prisma/client's generated code must exist before tsc/jest run.
+# Flutter is intentionally not exercised here — no Flutter CI in this repo yet.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: backend-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Unit tests + typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Unit tests
+        run: npm test
