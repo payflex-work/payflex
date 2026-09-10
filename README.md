@@ -8,6 +8,12 @@
   <strong>Mobile-first microfinance — savings, loans, agents, and group savings on the BMONI Embedded API</strong>
 </p>
 
+<p align="center">
+  <a href="https://github.com/payflex-work/payflex/actions/workflows/backend-tests.yml">
+    <img src="https://github.com/payflex-work/payflex/actions/workflows/backend-tests.yml/badge.svg" alt="Backend tests">
+  </a>
+</p>
+
 ---
 
 ## What is PayFlex?
