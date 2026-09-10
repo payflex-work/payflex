@@ -64,7 +64,7 @@ async function main() {
     console.log('='.repeat(72));
     console.log(
       '\nNote: this treasury wallet has zero balance in sandbox (same limitation as every\n' +
-        'other wallet in this build — see backend/README.md "Phase 3 findings"), so a real\n' +
+        'other wallet in this build — sandbox wallets have no funding path), so a real\n' +
         'disbursement will create and sign a valid proposal but will not execute on-chain.',
     );
   } finally {

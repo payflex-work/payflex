@@ -103,7 +103,7 @@ export class TreasuryService {
 
   /**
    * Signs a BMONI proposal's `signingPayloadHash` as a raw digest —
-   * confirmed live (see backend/README.md "Phase 3 findings") that this,
+   * confirmed live that this,
    * not the EIP-712 hash of the accompanying `typedData`, is what BMONI
    * actually verifies against the registered owner address.
    */

@@ -12,8 +12,7 @@ import { stablecoinForFiat } from '../common/currency.util';
  * calls into this service; nothing else in the app talks to the proposal
  * endpoints directly.
  *
- * Confirmed live (2026-09-04) mechanics this service encodes — see
- * backend/README.md "Phase 3 findings" for the full writeup:
+ * Confirmed live (2026-09-04) mechanics this service encodes:
  *  - There is no separate "approve" endpoint. Submitting a valid
  *    signature via signProposal IS the approval action.
  *  - The value to sign is `signingPayloadHash` from getSignPayload, taken

@@ -55,7 +55,7 @@ class StellarClient {
   /// Testnet only — Friendbot doesn't exist on mainnet. Mainnet
   /// activation instead needs a real minimum-balance payment from an
   /// already-funded account, which this app does not attempt to
-  /// automate (see docs/stellar-rail.md — a deliberate business decision,
+  /// automate (a deliberate business decision,
   /// not an oversight).
   Future<void> fundViaFriendbot(String publicKey) async {
     if (_friendbotUrl == null) {
@@ -102,7 +102,7 @@ class StellarClient {
 
   /// Whether [publicKey] already trusts [assetCode] issued by [issuer] —
   /// the pre-flight check every send screen must run before submitting a
-  /// non-native payment, per docs/stellar-rail.md: a payment to an
+  /// non-native payment: a payment to an
   /// account without this trustline fails on-chain, and this app should
   /// catch that before spending a network round trip, not after.
   Future<bool> recipientHasTrustline(String recipientPublicKey, String assetCode, String issuer) async {

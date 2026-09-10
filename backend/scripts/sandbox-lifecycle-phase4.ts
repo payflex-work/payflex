@@ -161,8 +161,7 @@ async function main() {
     // Test-only: backdate createdAt to simulate an account with enough
     // history to clear the score threshold. This sandbox has no funded
     // wallets, so real transaction-history signal (the other half of the
-    // score) is unavailable no matter which account we use — see
-    // backend/README.md "Phase 4 findings".
+    // score) is unavailable no matter which account we use.
     await prisma.appUser.update({
       where: { id: customer.appUser.id },
       data: { createdAt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) },

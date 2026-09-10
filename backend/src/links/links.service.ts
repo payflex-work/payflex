@@ -154,7 +154,7 @@ export class LinksService {
     });
   }
 
-  /** Sign payload is prepared asynchronously — see backend/README.md "Phase 3 findings". */
+  /** Sign payload is prepared asynchronously — it can 409 briefly after proposal creation; poll. */
   private async waitForSignPayload(appUserId: string, proposalId: string) {
     for (let attempt = 0; attempt < 8; attempt++) {
       try {

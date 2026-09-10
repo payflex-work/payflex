@@ -756,9 +756,9 @@ class ApiClient {
 
   // --- Send-via-link / escrow (Phase 5) ---------------------------------------
   //
-  // *** Liability note (see backend's ClaimableLink model + README): while a
+  // *** Liability note (see backend's ClaimableLink model + root README): while a
   // link is ESCROWED, PayFlex is holding a real customer's funds. This is
-  // not "just a feature" — see backend/README.md before changing this flow. ***
+  // not "just a feature" — see the root README (Send via link) before changing this flow. ***
 
   /// Returns either a plain transfer proposal (recipient already has a
   /// bmoniUserId) or an escrow proposal + claim token — check `type`.

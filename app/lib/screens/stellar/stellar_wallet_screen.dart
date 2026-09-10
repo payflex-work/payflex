@@ -14,7 +14,7 @@ import 'stellar_send_screen.dart';
 
 /// PayFlex's Stellar rail — an additional, OPTIONAL wallet that sits
 /// alongside the primary BMONI wallet, never routed through it. See
-/// docs/stellar-rail.md for the full architecture and why this exists.
+/// the root README's "Stellar rail" section for the full architecture and why this exists.
 ///
 /// This screen is honest about state at every step: not opted in yet ->
 /// opted in but not funded on-chain -> funded, with real balances,

@@ -46,8 +46,7 @@ class WalletService {
   /// exact hash, NOT the EIP-712 hash of the `typedData` object it's
   /// packaged alongside — signing the properly-computed EIP-712 digest
   /// was tested and rejected ("signature does not match your registered
-  /// owner address"). See backend/README.md "Phase 3 findings" for the
-  /// full story. Do not run `digestHex` through any additional hashing
+  /// owner address"). Do not run `digestHex` through any additional hashing
   /// before calling this.
   static Future<String> signDigest(String digestHex, String pin) {
     if (signDigestHook != null) return signDigestHook!(digestHex, pin);

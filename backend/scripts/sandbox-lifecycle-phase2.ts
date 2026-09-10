@@ -15,9 +15,8 @@
  * (confirmed live: plain random bytes are rejected with "not a valid
  * JPEG, PNG, or PDF"), but does not appear to validate that a NGN-path
  * document's *contents* depict an actual ID/utility bill/face. The
- * USD/Sumsub path is stricter still — see backend/README.md "Phase 2
- * findings" (start-usa returned 422 BAD_SELFIE/DOCUMENT_PAGE_MISSING
- * against this same fixture). This script only exercises the NGN rail
+ * USD/Sumsub path is stricter still — start-usa returned 422
+ * BAD_SELFIE/DOCUMENT_PAGE_MISSING against this same fixture. This script only exercises the NGN rail
  * for that reason.
  *
  * Run with: npm run sandbox:phase2

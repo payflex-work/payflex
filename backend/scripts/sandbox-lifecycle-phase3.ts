@@ -9,8 +9,7 @@
  * there's no mobile device/emulator here. The Flutter app must always go
  * through bmoni_embedded_sdk for real key material.
  *
- * CRITICAL and non-obvious (see backend/README.md "Phase 3 findings" for
- * the full story): the value signed below is `signingPayloadHash` from
+ * CRITICAL and non-obvious: the value signed below is `signingPayloadHash` from
  * GET sign-payload, taken as a RAW digest — NOT the EIP-712 hash of the
  * accompanying `typedData` object. Signing the properly-computed EIP-712
  * digest was tested against this sandbox and REJECTED ("signature does

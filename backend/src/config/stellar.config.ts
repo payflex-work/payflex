@@ -9,7 +9,7 @@ export interface StellarConfig {
 
 /**
  * Config for PayFlex's Stellar rail — a second, optional payment network
- * that sits ALONGSIDE BMONI (see docs/stellar-rail.md), never routed
+ * that sits ALONGSIDE BMONI (see the root README), never routed
  * through it. Defaults to testnet; mainnet requires an explicit env flag
  * since it involves real, irreversible funds — this mirrors BMONI_ENV's
  * sandbox-vs-production split in bmoni.config.ts, but the stakes of
@@ -25,7 +25,7 @@ export default registerAs('stellar', (): StellarConfig => {
     if (!horizonUrl) {
       throw new Error(
         'STELLAR_NETWORK=mainnet but STELLAR_HORIZON_URL is not set. This is a deliberate ' +
-          'business/compliance decision (see docs/stellar-rail.md) — set it explicitly, ' +
+          'business/compliance decision (see the root README) — set it explicitly, ' +
           'e.g. STELLAR_HORIZON_URL=https://horizon.stellar.org, never as a silent default.',
       );
     }

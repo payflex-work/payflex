@@ -17,8 +17,7 @@
  * 200 with a workflowId, and onboarding/status's anchorStatus flipped to
  * "active" immediately, exactly as it does for a correctly-matched name.
  * That's a real, compliance-relevant deviation from what the brief
- * describes, not a bug in this codebase — see backend/README.md "Phase 2
- * findings". It's possible BMONI enforces the name match later,
+ * describes, not a bug in this codebase. It's possible BMONI enforces the name match later,
  * asynchronously, out-of-band from this endpoint (e.g. a subsequent
  * kyc.action_required webhook) — this script only checks the synchronous
  * response, which is all that's observable without a live webhook
@@ -122,7 +121,7 @@ async function main() {
           "match the BVN's name on file. This contradicts the build brief's claim\n" +
           'that BVN verification checks the name — treat this as a live finding to\n' +
           're-verify before relying on start-nigeria alone as a compliance control.\n' +
-          'See backend/README.md "Phase 2 findings".',
+          'See the root README (Compliance note) before relying on it as a control.',
       );
     }
     console.log('='.repeat(72));

@@ -167,7 +167,7 @@ export interface ExchangeConvertRequest {
 /**
  * Proposal shapes confirmed live (2026-09-04) via a real TRANSFER
  * proposal created, signed, and polled against the sandbox. See
- * BmoniClientService and backend/README.md "Phase 3 findings" for the
+ * BmoniClientService for the
  * full writeup — most importantly: creating a proposal needs the
  * `/v1/users/{userId}` prefix the brief omits, there is no separate
  * "approve" endpoint (signing IS the approval action), and the value to

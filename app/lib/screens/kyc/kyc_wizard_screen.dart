@@ -20,8 +20,7 @@ import '../wallet_home_screen.dart';
 /// ahead — each step's Continue button is disabled until that step's
 /// backend call has succeeded.
 ///
-/// Confirmed live quirks this screen works around (see
-/// backend/README.md "Phase 2 findings" for the full detail):
+/// Confirmed live quirks this screen works around:
 ///  - GET kyc/options' `identificationTypes` list does NOT match what the
 ///    identification-document upload endpoint actually accepts, so this
 ///    screen uses the confirmed upload-side enum instead of that list.

@@ -6,8 +6,8 @@ import { DepositChain, DepositCurrency } from '../bmoni/dto/wallet-home.dto';
 
 /**
  * Deposits and NGN bank withdrawal (build brief section 5, Phase 3).
- * Both are real BMONI functionality — see backend/README.md "Phase 3
- * findings" for what was actually confirmed working vs. blocked by
+ * Both are real BMONI functionality — see this module's inline notes for
+ * what was actually confirmed working vs. blocked by
  * sandbox limitations (crypto deposit 502'd from BMONI's own upstream
  * bridge provider; NGN account verification needs a real NUBAN this
  * sandbox has no test value for).

@@ -12,7 +12,7 @@ import 'package:stellar_flutter_sdk/stellar_flutter_sdk.dart';
 ///      the other.
 ///
 /// The secret seed never leaves the device and is never sent to the
-/// PayFlex backend or logged — see docs/stellar-rail.md. Stored in the
+/// PayFlex backend or logged. Stored in the
 /// platform keychain/keystore via flutter_secure_storage (Keychain on
 /// iOS, EncryptedSharedPreferences/Keystore on Android), NOT
 /// SharedPreferences, unlike this app's other injectable-storage

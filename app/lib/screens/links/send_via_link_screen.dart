@@ -18,7 +18,7 @@ import '../transfer/send_money_screen.dart' show humanTransferStatus, transferTo
 /// through PayFlex's own treasury as an escrow holder.
 ///
 /// *** This is a real liability/compliance surface, not just a feature —
-/// see backend/README.md and the ClaimableLink model's doc comment in
+/// see the root README (Send via link) and the ClaimableLink model's doc comment in
 /// backend/prisma/schema.prisma before assuming "it's just like QR Pay."
 /// While a link sits unclaimed, PayFlex is holding a real customer's
 /// funds in its own custodial account. ***

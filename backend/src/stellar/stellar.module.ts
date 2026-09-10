@@ -6,7 +6,7 @@ import { StellarController } from './stellar.controller';
 
 /**
  * PayFlex's Stellar rail — additive and self-contained, parallel to
- * BMONI, never routed through it. See docs/stellar-rail.md.
+ * BMONI, never routed through it. See the root README's "Stellar rail" section.
  */
 @Module({
   imports: [ConfigModule.forFeature(stellarConfig)],

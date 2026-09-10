@@ -169,9 +169,7 @@ export class OnboardingService {
   // asks for these "structurally wired but not UI-polished," unlike
   // NGN/USD they get no local RailOnboarding persistence or dedicated
   // Flutter screens; wire the rest properly if/when a phase actually
-  // targets one of these rails. Not exercised against the live sandbox
-  // with the same depth as NGN/USD/transfers — see backend/README.md
-  // "Phase 5 findings.") ---------------------------------------------------
+  // targets one of these rails. Not exercised against the live sandbox   // with the same depth as NGN/USD/transfers.) ---------------------------------------------------
 
   async startCanada(appUserId: string, body: { cadWalletAddress: string; cadWalletIndex: number }) {
     const user = await this.users.findById(appUserId);

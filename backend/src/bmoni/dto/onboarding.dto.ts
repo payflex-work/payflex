@@ -8,7 +8,6 @@ export interface StartNigeriaRequest {
  * Confirmed live (2026-09-04). Note: onboarding/status's `anchorStatus`
  * flipped to "active" immediately on a successful call here, with NO
  * observed synchronous rejection for a BVN/name mismatch — see
- * backend/README.md "Phase 2 findings" for the full writeup and why that
  * matters (it's a real deviation from what the build brief describes).
  */
 export interface StartNigeriaResponse {

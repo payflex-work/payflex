@@ -3,8 +3,8 @@
  * a fresh test user carried through the full KYC wizard (options ->
  * occupations -> 3 documents -> PATCH -> readiness -> activate) and then
  * NGN + USD rail onboarding. Several field names differ from a literal
- * reading of the build brief — see backend/README.md "Phase 2 findings"
- * for the full list and why each one matters.
+ * reading of the build brief — these shapes are the live-confirmed ones;
+ * don't "fix" them back to the brief's literal reading.
  */
 export interface KycOptionsResponse {
   genders: string[];
