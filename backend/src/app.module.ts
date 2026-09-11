@@ -28,6 +28,7 @@ import { SafeboxModule } from './safebox/safebox.module';
 import { AdminModule } from './admin/admin.module';
 import { StandingPlansModule } from './standing-plans/standing-plans.module';
 import { StellarModule } from './stellar/stellar.module';
+import { HealthController } from './health/health.controller';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { StellarModule } from './stellar/stellar.module';
     StandingPlansModule,
     StellarModule,
   ],
+  controllers: [HealthController],
   providers: [
     // Order matters: throttling runs before auth so a flood of requests
     // gets rate-limited before reaching AuthGuard's logic at all.
