@@ -6,6 +6,9 @@
   <a href="https://github.com/payflex-work/payflex/actions/workflows/backend-tests.yml">
     <img src="https://github.com/payflex-work/payflex/actions/workflows/backend-tests.yml/badge.svg" alt="Backend tests">
   </a>
+  <a href="https://github.com/payflex-work/payflex/actions/workflows/backend-docker.yml">
+    <img src="https://github.com/payflex-work/payflex/actions/workflows/backend-docker.yml/badge.svg" alt="Backend Docker">
+  </a>
 </p>
 
 # PayFlex

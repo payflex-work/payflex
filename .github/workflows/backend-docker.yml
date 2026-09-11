@@ -1,0 +1,123 @@
+name: Backend Docker
+
+# Build the backend Docker image on every push, then smoke-test it the
+# same way deploys run: boot the container against a throwaway Postgres
+# on a private Docker network, let the entrypoint's `prisma migrate
+# deploy` apply all migrations from zero, and require /v1/health to go
+# green. This catches broken builds, missing migration SQL, and broken
+# DB wiring before anything reaches a PaaS.
+# Pure unit tests live in backend-tests.yml; this job is the container
+# equivalent of the verification flow in docs/deploy.md.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: backend-docker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-smoke-test:
+    name: Build image + fresh-DB smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          tags: payflex-backend:ci
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Start throwaway Postgres and Redis
+        run: |
+          docker network create payflex-ci
+          docker run -d --name payflex-ci-postgres --network payflex-ci \
+            -e POSTGRES_USER=payflex -e POSTGRES_PASSWORD=payflex -e POSTGRES_DB=payflex \
+            postgres:16-alpine
+          docker run -d --name payflex-ci-redis --network payflex-ci \
+            redis:7-alpine
+          # Wait for the real TCP server. During init Postgres runs a
+          # socket-only temporary server, so pg_isready without -h lies
+          # about readiness and the app would race it with a P1001.
+          for i in $(seq 1 30); do
+            if docker exec payflex-ci-postgres pg_isready -h 127.0.0.1 -U payflex >/dev/null 2>&1; then
+              echo "postgres accepting TCP connections"
+              break
+            fi
+            sleep 1
+          done
+          docker exec payflex-ci-postgres pg_isready -h 127.0.0.1 -U payflex
+
+      - name: Boot backend container (entrypoint runs migrations)
+        run: |
+          # The BMONI sandbox key is committed in .env.example by design;
+          # reading it from there keeps CI in sync if it ever rotates.
+          BMONI_KEY=$(grep '^BMONI_API_KEY_SANDBOX=' backend/.env.example | cut -d= -f2-)
+          docker run -d --name payflex-ci-backend --network payflex-ci \
+            -e DATABASE_URL="postgresql://payflex:payflex@payflex-ci-postgres:5432/payflex?schema=public" \
+            -e REDIS_URL="redis://payflex-ci-redis:6379" \
+            -e BMONI_ENV=sandbox \
+            -e BMONI_BASE_URL_SANDBOX=https://embedded-dev.bmoni.com \
+            -e BMONI_API_KEY_SANDBOX="$BMONI_KEY" \
+            -e JWT_SECRET=ci-only-secret-not-for-production \
+            -e QR_SIGNING_SECRET=ci-only-secret-not-for-production \
+            payflex-backend:ci
+
+      - name: Wait for container to become healthy
+        run: |
+          for i in $(seq 1 60); do
+            STATUS=$(docker inspect --format '{{.State.Health.Status}}' payflex-ci-backend 2>/dev/null || echo missing)
+            if [ "$STATUS" = "healthy" ]; then
+              echo "container healthy (iteration $i)"
+              exit 0
+            fi
+            if [ "$STATUS" = "missing" ] || [ "$STATUS" = "exited" ]; then
+              echo "container died before becoming healthy"
+              docker logs payflex-ci-backend --tail 100 || true
+              exit 1
+            fi
+            sleep 2
+          done
+          echo "timed out waiting for healthy"
+          docker logs payflex-ci-backend --tail 100 || true
+          exit 1
+
+      - name: Verify migrations applied to the fresh database
+        run: |
+          docker exec payflex-ci-backend node -e "
+            const { PrismaClient } = require('@prisma/client');
+            const p = new PrismaClient();
+            p.\$queryRaw\`SELECT count(*)::int AS n FROM _prisma_migrations WHERE finished_at IS NOT NULL\`
+              .then((r) => {
+                console.log('migrations applied from zero:', r[0].n);
+                if (r[0].n < 1) process.exit(1);
+                return p.\$disconnect();
+              })
+              .catch((e) => { console.error(e.message); process.exit(1); });
+          "
+          docker logs payflex-ci-backend 2>&1 | grep -E 'Applying migration|All migrations' | head -20
+
+      - name: Hit /v1/health from inside the container
+        run: |
+          docker exec payflex-ci-backend node -e "
+            fetch('http://127.0.0.1:3000/v1/health')
+              .then(async (r) => {
+                console.log(r.status, await r.text());
+                if (!r.ok) process.exit(1);
+              })
+              .catch(() => process.exit(1));
+          "
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f payflex-ci-backend payflex-ci-postgres payflex-ci-redis || true
