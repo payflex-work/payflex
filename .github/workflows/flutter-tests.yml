@@ -38,12 +38,11 @@ jobs:
         run: flutter pub get
 
       - name: Analyze
-        # The codebase currently has ~71 pre-existing lint infos/warnings
-        # (prefer_const, deprecations, unused imports) but 0 errors — see the
-        # README's verification status. --no-fatal-* keeps those visible in
-        # the log without failing the build; a genuine error still fails.
-        # Tighten to a fully clean `flutter analyze` once the lints are fixed.
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+        # Fully clean `flutter analyze` ("No issues found!") as of 08736b3 —
+        # every info/warning is resolved, so any new finding fails the build.
+        # If a Flutter SDK upgrade introduces new lints, fix them rather than
+        # re-adding --no-fatal-infos/--no-fatal-warnings here.
+        run: flutter analyze
 
       - name: Tests
         run: flutter test
