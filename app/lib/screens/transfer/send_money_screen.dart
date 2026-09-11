@@ -120,7 +120,7 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
                   const Text(
                     'Send to another PayFlex account by PayTag, user ID or '
                     'wallet address.',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: PfColors.inkMuted,
                       fontSize: 13.5,
                       height: 1.45,
@@ -156,7 +156,7 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
                       _RecipientMode.bmoniUserId => 'The 36-char id from their profile.',
                       _RecipientMode.address => 'Their BMONI smart-wallet address.',
                     },
-                    style: TextStyle(color: PfColors.inkFaint, fontSize: 12),
+                    style: const TextStyle(color: PfColors.inkFaint, fontSize: 12),
                   ),
                   const SizedBox(height: 20),
                   const Text(
@@ -211,7 +211,7 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
                       parseAmount(_amountController.text) > 0
                           ? 'You\u2019re sending ${formatMoney(_amountController.text, _currency)}'
                           : 'Sign the payment with your 6-digit PIN when it\u2019s ready.',
-                      style: TextStyle(
+                      style: const TextStyle(
                         color: PfColors.inkMuted,
                         fontSize: 12.5,
                       ),
