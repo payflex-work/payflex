@@ -1,0 +1,61 @@
+# Render Blueprint — PayFlex backend (Docker deploy).
+# Apply via: Render Dashboard → New → Blueprint → select this repo.
+# Docs: https://render.com/docs/blueprint-spec
+#
+# Migrations: the image ENTRYPOINT runs `prisma migrate deploy` before the
+# server starts, and preDeployCommand below runs it again in a dedicated
+# release phase before the new build goes live. Both are idempotent — a
+# double run is a no-op, so this is belt-and-braces, not a bug.
+services:
+  - type: web
+    name: payflex-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter # right-size for production; free tier cold-starts
+    healthCheckPath: /v1/health
+    autoDeploy: true
+    preDeployCommand: "npx prisma migrate deploy"
+    envVars:
+      - key: BMONI_ENV
+        value: sandbox # flip to production only with a real partner key (see docs/deploy.md)
+      - key: BMONI_BASE_URL_SANDBOX
+        sync: false
+      - key: BMONI_API_KEY_SANDBOX
+        sync: false
+      - key: BMONI_BASE_URL_PRODUCTION
+        sync: false
+      - key: BMONI_API_KEY_PRODUCTION
+        sync: false
+      - key: BMONI_WEBHOOK_SECRET
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true # rotating this logs every user out (see .env.example)
+      - key: QR_SIGNING_SECRET
+        generateValue: true
+      - key: PAYFLEX_TREASURY_BMONI_USER_ID
+        sync: false
+      - key: PAYFLEX_TREASURY_OWNER_PRIVATE_KEY
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: payflex-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: payflex-redis
+          property: connectionString
+
+databases:
+  - name: payflex-db
+    databaseName: payflex
+    user: payflex
+    plan: free # upgrade before production; free-tier Postgres expires
+    postgresMajorVersion: "16"
+
+  - type: redis
+    name: payflex-redis
+    plan: free
+    maxmemoryPolicy: noeviction
+    ipAllowList: [] # internal connections from payflex-backend only

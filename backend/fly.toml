@@ -1,0 +1,41 @@
+# fly.toml — PayFlex backend on Fly.io.
+# Deploy from backend/: `fly deploy` (see docs/deploy.md for first-time setup).
+# Docs: https://fly.io/docs/reference/configuration/
+
+app = "payflex-backend"
+primary_region = "lhr" # pick the Fly region nearest your users
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "3000"
+  NODE_ENV = "production"
+  BMONI_ENV = "sandbox" # flip to production only with a real partner key
+  STELLAR_NETWORK = "testnet"
+
+# Migrations: release_command runs `npx prisma migrate deploy` in a fresh
+# VM from the new image before the rollout begins. The image ENTRYPOINT
+# also migrates on every boot; both are idempotent, so the double run is
+# a harmless no-op.
+[deploy]
+  release_command = "npx prisma migrate deploy"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "off" # payments backend: keep a machine always up
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "60s" # covers migration time on cold boot
+    method = "get"
+    path = "/v1/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
