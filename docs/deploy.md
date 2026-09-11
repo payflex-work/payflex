@@ -94,3 +94,30 @@ covers migration time).
   developers@bkey.me); the boot check refuses to start otherwise.
 - The old Vercel deploy path (`/vercel.json`) was removed — Vercel has no
   long-running Postgres/Redis story for this service.
+
+## Point the Flutter app at the deployed backend
+
+The app reads its backend origin from the compile-time constant
+`Env.backendBaseUrl` (`app/lib/config/env.dart`), which defaults to
+`http://localhost:3000` for emulator/simulator development. It is set at
+build time via `--dart-define`, not at runtime:
+
+```sh
+# dev against a local backend (Android emulator aliases host localhost
+# as 10.0.2.2; iOS simulator can use localhost directly)
+flutter run --dart-define=BACKEND_BASE_URL=http://10.0.2.2:3000
+
+# release build against the deployed backend
+flutter build apk --release \
+  --dart-define=BACKEND_BASE_URL=https://<your-backend-domain>
+```
+
+- **HTTPS is required in release builds** — Android (API 28+) and iOS
+  (ATS) block cleartext http://. `Env.assertSafeConfig()` runs at launch
+  and fails fast with an explanatory error if a release build still
+  points at an http:// origin, instead of dying on the first API call
+  with an opaque socket error.
+- **No trailing slash** — `ApiClient` joins paths as `$baseUrl$path`.
+- **Sanity check before shipping a build**: the app's first API calls
+  (user creation, login challenge) hit the same backend as
+  `curl https://<your-backend-domain>/v1/health` → `{"status":"ok"}`.

@@ -180,13 +180,13 @@ class PayFlexTheme {
         borderRadius: BorderRadius.circular(PfRadius.sm),
         borderSide: BorderSide(color: accent, width: 1.6),
       ),
-      errorBorder: const OutlineInputBorder(
+      errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(PfRadius.sm),
-        borderSide: BorderSide(color: PfColors.danger),
+        borderSide: const BorderSide(color: PfColors.danger),
       ),
-      focusedErrorBorder: const OutlineInputBorder(
+      focusedErrorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(PfRadius.sm),
-        borderSide: BorderSide(color: PfColors.danger, width: 1.6),
+        borderSide: const BorderSide(color: PfColors.danger, width: 1.6),
       ),
     );
 

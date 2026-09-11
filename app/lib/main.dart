@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'config/env.dart';
 import 'services/local_user_store.dart';
 import 'services/api_client.dart';
 import 'services/session_manager.dart';
@@ -15,6 +16,7 @@ import 'screens/wallet_home_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  Env.assertSafeConfig(); // release builds must not target http:// (see env.dart)
   WalletService.initialize();
   await PfAppearance.init(); // persisted dark/light choice (default: dark)
   runApp(const PayFlexApp());
