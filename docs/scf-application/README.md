@@ -22,6 +22,7 @@ it — rounds close every ~6 weeks).
 | [`technical-summary.md`](technical-summary.md) | Architecture summary, what's built + how each claim was verified, links | ✅ Yes — confirm repo/docs URLs |
 | [`roadmap-and-ask.md`](roadmap-and-ask.md) | Use of funds, phased timeline mapped to SCF tranches | ⚠️ Structure ready — needs amounts + dates |
 | [`team-and-links.md`](team-and-links.md) | Team, traction, links, referral | ❌ All founder input |
+| [`demo/`](demo/README.md) | **40s offline-payment demo video** + verification manifest + side-by-side stills | ✅ Yes — real protocol code, real testnet settlement (see demo README for the verify links) |
 
 ## Founder-input checklist (consolidated)
 
@@ -47,7 +48,9 @@ Complete these before submission — they are the **only** gaps in the drafts:
     *(team-and-links.md)*
 11. **Links** — demo video / hosted testnet demo (strongly recommended for
     Open Track community vote), website, contact email, Discord handle,
-    social profiles. *(team-and-links.md)*
+    social profiles. *(team-and-links.md — a real demo video now exists:
+    `demo/payflex_offline_demo.mp4`; host it on YouTube/Vimeo for the
+    submission form and link it here.)*
 
 ## Submission mechanics (from the current handbook)
 

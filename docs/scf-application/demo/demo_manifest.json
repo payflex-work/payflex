@@ -1,0 +1,18 @@
+{
+  "hash": "ad4b41bda2aee20261499a6e694965c50ee412abdb262bc5fee93d1f0c4f5407",
+  "authorizationId": "auth_0aa9a98ad2a24a1d",
+  "payerStellar": "GCE4ZEKOPXY45RWGVG3RMLECWLD3SFDATELS6CQ5DJVAIB2B5SHFTLGZ",
+  "merchantStellar": "GCQSYAQZW4PAP3AUZ7M4RYDE7EZWRR4MJVMYEY3DB2XICFGEN6SJEI46",
+  "amountXlm": "1.5000000",
+  "memo": "offline auth\u20264a1d",
+  "explorerUrl": "https://stellar.expert/explorer/testnet/tx/ad4b41bda2aee20261499a6e694965c50ee412abdb262bc5fee93d1f0c4f5407",
+  "horizonUrl": "https://horizon-testnet.stellar.org/transactions/ad4b41bda2aee20261499a6e694965c50ee412abdb262bc5fee93d1f0c4f5407",
+  "note": "All protocol steps executed by the app's real code (PaymentProtocol, OfflineReserveService, FountainCoder, AnimatedOpticalQr). Transport rendered to video instead of photons; QR frames decoded from rendered pixels with jsQR. Settlement is a real Stellar testnet transaction.",
+  "horizonVerified": {
+    "successful": true,
+    "ledger": 4672758,
+    "createdAt": "2026-09-14T12:02:57Z",
+    "sourceAccount": "GCE4ZEKOPXY45RWGVG3RMLECWLD3SFDATELS6CQ5DJVAIB2B5SHFTLGZ",
+    "note": "Confirmed by fetching the transaction from Horizon after recording."
+  }
+}
