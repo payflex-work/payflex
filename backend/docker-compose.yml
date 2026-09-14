@@ -1,8 +1,9 @@
 version: "3.8"
 
-# Local dev infra only — Postgres for the app DB, Redis for cache/session.
-# Nothing else runs here: Stellar (Horizon/Friendbot) is a public network
-# the app and backend talk to over the internet, not something we host.
+# Local dev infra only — Postgres for the app DB (including the login
+# challenge store; see src/auth/auth.service.ts). Nothing else runs here:
+# Stellar (Horizon/Friendbot) is a public network the app and backend talk
+# to over the internet, not something we host.
 services:
   postgres:
     image: postgres:16-alpine
@@ -15,12 +16,6 @@ services:
       - "5432:5432"
     volumes:
       - payflex_postgres_data:/var/lib/postgresql/data
-
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
 
 volumes:
   payflex_postgres_data:

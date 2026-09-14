@@ -2,7 +2,6 @@ import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/
 import { Keypair } from '@stellar/stellar-sdk';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
-import { RedisService } from '../redis/redis.service';
 import { TokenService } from '../token/token.service';
 import { UsersService } from '../users/users.service';
 
@@ -14,12 +13,19 @@ const CHALLENGE_TTL_SECONDS = 5 * 60;
  * system to build or store. The challenge is a plain string; the app signs
  * it with the device's Stellar secret seed (StellarKeyService) and the
  * backend verifies the Ed25519 signature against the registered public key.
+ *
+ * Challenges live in Postgres (LoginChallenge), not Redis — one managed
+ * database serves the whole backend. A challenge is short-TTL, single-use
+ * state: appUserId is unique so at most one pending challenge exists per
+ * user, requesting a new one replaces the old, and consumption is an
+ * atomic conditional DELETE whose affected-row count is the single-use
+ * gate — exactly one login can ever consume a challenge, even under
+ * concurrent attempts.
  */
 @Injectable()
 export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly redis: RedisService,
     private readonly tokens: TokenService,
     private readonly users: UsersService,
   ) {}
@@ -35,7 +41,13 @@ export class AuthService {
     }
     const nonce = randomBytes(16).toString('hex');
     const message = `Log in to PayFlex\nUser ID: ${appUserId}\nNonce: ${nonce}`;
-    await this.redis.setWithTtl(this.challengeKey(appUserId), message, CHALLENGE_TTL_SECONDS);
+    const expiresAt = new Date(Date.now() + CHALLENGE_TTL_SECONDS * 1000);
+    // Upsert: a fresh request always supersedes any pending challenge.
+    await this.prisma.loginChallenge.upsert({
+      where: { appUserId },
+      create: { appUserId, message, expiresAt },
+      update: { message, expiresAt },
+    });
     return { message };
   }
 
@@ -45,8 +57,13 @@ export class AuthService {
       throw new BadRequestException(`User ${appUserId} has no Stellar public key registered yet.`);
     }
 
-    const message = await this.redis.getAndDelete(this.challengeKey(appUserId));
-    if (!message) {
+    const pending = await this.prisma.loginChallenge.findUnique({ where: { appUserId } });
+    if (!pending || pending.expiresAt.getTime() < Date.now()) {
+      // Same semantics as the former Redis TTL: an expired challenge is an
+      // absent challenge.
+      if (pending) {
+        await this.prisma.loginChallenge.delete({ where: { appUserId } }).catch(() => undefined);
+      }
       throw new UnauthorizedException('No pending login challenge — request a new one.');
     }
 
@@ -59,13 +76,23 @@ export class AuthService {
 
     const signatureOk = (() => {
       try {
-        return keypair.verify(Buffer.from(message, 'utf8'), Buffer.from(signatureHex, 'hex'));
+        return keypair.verify(Buffer.from(pending.message, 'utf8'), Buffer.from(signatureHex, 'hex'));
       } catch {
         return false;
       }
     })();
     if (!signatureOk) {
       throw new UnauthorizedException("Signature doesn't match this user's registered Stellar public key.");
+    }
+
+    // Single-use gate: the conditional delete is atomic — under concurrent
+    // logins exactly one caller observes count === 1; everyone else gets
+    // rejected as if the challenge never existed.
+    const consumed = await this.prisma.loginChallenge.deleteMany({
+      where: { appUserId, expiresAt: { gt: new Date() } },
+    });
+    if (consumed.count === 0) {
+      throw new UnauthorizedException('No pending login challenge — request a new one.');
     }
 
     return this.issueTokens(user.id, user.stellarPublicKey);
@@ -101,9 +128,5 @@ export class AuthService {
       },
     });
     return { accessToken, refreshToken };
-  }
-
-  private challengeKey(appUserId: string): string {
-    return `auth:challenge:${appUserId}`;
   }
 }

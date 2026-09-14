@@ -6,7 +6,6 @@ import { APP_GUARD } from '@nestjs/core';
 import stellarConfig from './config/stellar.config';
 import { CommonModule } from './common/common.module';
 import { PrismaModule } from './prisma/prisma.module';
-import { RedisModule } from './redis/redis.module';
 import { TokenModule } from './token/token.module';
 import { AuthModule } from './auth/auth.module';
 import { AuthGuard } from './auth/auth.guard';
@@ -41,7 +40,6 @@ import { HealthController } from './health/health.controller';
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }]),
     CommonModule,
     PrismaModule,
-    RedisModule,
     TokenModule,
     AuthModule,
     UsersModule,

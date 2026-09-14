@@ -35,11 +35,6 @@ services:
         fromDatabase:
           name: payflex-db
           property: connectionString
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: payflex-redis
-          property: connectionString
 
 databases:
   - name: payflex-db
@@ -47,9 +42,3 @@ databases:
     user: payflex
     plan: free # upgrade before production; free-tier Postgres expires
     postgresMajorVersion: "16"
-
-  - type: redis
-    name: payflex-redis
-    plan: free
-    maxmemoryPolicy: noeviction
-    ipAllowList: [] # internal connections from payflex-backend only

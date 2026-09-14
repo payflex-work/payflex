@@ -113,7 +113,7 @@ Two hard boundaries hold it together:
 cd backend
 npm install
 cp .env.example .env
-docker compose up -d           # Postgres + Redis for local dev
+docker compose up -d           # Postgres for local dev
 npx prisma migrate dev         # creates the schema (first run only)
 npm run start:dev              # http://localhost:3000
 npm test                       # e2e suites (includes the hard-gate test)

@@ -88,6 +88,7 @@ model AppUser {
   splitBillContributions     SplitBillContributor[]
   standingPlans              StandingPlan[]
   refreshTokens              RefreshToken[]
+  loginChallenge             LoginChallenge?
 }
 
 // PayFlex's own @handle -> user directory. Resolves a tag to the recipient's
@@ -270,6 +271,23 @@ model RefreshToken {
   appUser   AppUser  @relation(fields: [appUserId], references: [id])
   jti       String   @unique
   revoked   Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+// Login challenges replace the former Redis-backed store — the last Redis
+// use in the system. A challenge is short-TTL, single-use state, and
+// Postgres serves it fine at PayFlex's scale: one less infrastructure
+// dependency (deployment is a single Neon database). appUserId is unique,
+// so at most one pending challenge exists per user; requesting a new one
+// atomically replaces the old, and login consumes the row in a single
+// DELETE ... RETURNING statement, preserving the "can only ever be used
+// once, even under concurrent logins" guarantee the Redis version gave us.
+model LoginChallenge {
+  id        String   @id @default(uuid())
+  appUserId String   @unique
+  appUser   AppUser  @relation(fields: [appUserId], references: [id])
+  message   String
   expiresAt DateTime
   createdAt DateTime @default(now())
 }

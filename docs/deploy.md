@@ -24,8 +24,7 @@ Set these in each platform's secrets/dashboard — never in a committed file.
 
 | Variable | Notes |
 | --- | --- |
-| `DATABASE_URL` | Postgres connection string (usually injected by the platform) |
-| `REDIS_URL` | e.g. `redis://...` (usually injected by the platform) |
+| `DATABASE_URL` | Postgres connection string (usually injected by the platform). The single managed dependency — app data **and** the login challenge store |
 | `JWT_SECRET` | `openssl rand -hex 32`; rotating it logs every user out |
 | `QR_SIGNING_SECRET` | `openssl rand -hex 32`; rotating it invalidates in-flight QR codes |
 
@@ -56,15 +55,16 @@ the container entrypoint owns migrate-then-serve.
 1. Railway → New Project → Deploy from GitHub repo.
 2. On the backend service, set **Root Directory = `backend`** (it will
    pick up `Dockerfile` and `railway.json`).
-3. Provision infra: New → Database → **PostgreSQL** and **Redis**.
-   Railway injects `DATABASE_URL` / `REDIS_URL` automatically.
+3. Provision infra: New → Database → **PostgreSQL** (or plug in a Neon
+   connection string as `DATABASE_URL`).
 4. Add the required variables from the table above.
 5. Settings → Networking → **Generate Domain** for public traffic.
 
 ## Render
 
-`render.yaml` (blueprint) defines the web service, Postgres 16, and an
-internal-only Redis, with `DATABASE_URL` / `REDIS_URL` wired automatically.
+`render.yaml` (blueprint) defines the web service and Postgres 16, with
+`DATABASE_URL` wired automatically. A Neon connection string can be used
+instead of the blueprint database — the backend only needs `DATABASE_URL`.
 
 1. Render Dashboard → New → **Blueprint** → select this repo.
 2. Fill the `sync: false` variables in the dashboard when prompted;
@@ -84,9 +84,6 @@ cd backend
 fly apps create payflex-backend          # or: fly launch --no-deploy
 fly postgres create --name payflex-db
 fly postgres attach payflex-db --app payflex-backend   # sets DATABASE_URL
-fly redis create --name payflex-redis
-fly redis status payflex-redis           # copy the private connection URL
-fly secrets set REDIS_URL="redis://..."  # from the previous step
 fly secrets set JWT_SECRET="$(openssl rand -hex 32)" \
   QR_SIGNING_SECRET="$(openssl rand -hex 32)"
 fly deploy
@@ -107,7 +104,7 @@ covers migration time).
   funds with no custodian and no recovery path; treat it as a
   business/compliance decision, not a config change.
 - The old Vercel deploy path (`/vercel.json`) was removed — Vercel has no
-  long-running Postgres/Redis story for this service.
+  long-running Postgres story for this service.
 
 ## Point the Flutter app at the deployed backend
 
