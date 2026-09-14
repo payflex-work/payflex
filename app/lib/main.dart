@@ -17,8 +17,13 @@ import 'screens/wallet_home_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   Env.assertSafeConfig(); // release builds must not target http:// (see env.dart)
-  WalletService.initialize();
-  await PfAppearance.init(); // persisted dark/light choice (default: dark)
+  // The persisted dark/light choice (default: dark). Unawaited on
+  // purpose: PfAppearance.mode defaults to dark, the MaterialApp is a
+  // ValueListenableBuilder over it, so when the pref resolves the UI
+  // simply rebuilds. Blocking first paint on a SharedPreferences disk
+  // read here was measurable cold-start cost for zero visible benefit —
+  // worst case is one dark-first frame before a stored 'light' lands.
+  PfAppearance.init().ignore();
   runApp(const PayFlexApp());
 }
 
@@ -63,14 +68,37 @@ class _StartupGate extends StatefulWidget {
   State<_StartupGate> createState() => _StartupGateState();
 }
 
-class _StartupGateState extends State<_StartupGate> {
+class _StartupGateState extends State<_StartupGate>
+    with SingleTickerProviderStateMixin {
   final _store = LocalUserStore();
   final _api = ApiClient();
+  late final AnimationController _brandBeat;
 
   @override
   void initState() {
     super.initState();
+    // The splash mark draws once over 1250ms; hold the launch surface a
+    // beat past that (plus a fade) so the brand moment always completes,
+    // even when the startup decision resolves in tens of milliseconds.
+    // This is a deliberately timed beat, not artificial lag: the decision
+    // work below runs in parallel with it.
+    _brandBeat = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1750),
+    )..forward();
     _decide();
+  }
+
+  /// Replaces the splash with [screen], but never before the brand beat
+  /// has finished playing — every exit from the splash funnels through
+  /// here, so the mark always gets to land no matter how fast the
+  /// decision storage reads resolve.
+  Future<void> _go(Widget screen) async {
+    await _brandBeat.forward().orCancel;
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => screen),
+    );
   }
 
   Future<void> _decide() async {
@@ -83,13 +111,9 @@ class _StartupGateState extends State<_StartupGate> {
       final seenIntro = await _store.hasSeenIntro();
       if (!mounted) return;
       if (!seenIntro) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => IntroScreen(store: _store)),
-        );
+        await _go(IntroScreen(store: _store));
       } else {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const CreateUserScreen()),
-        );
+        await _go(const CreateUserScreen());
       }
       return;
     }
@@ -102,9 +126,7 @@ class _StartupGateState extends State<_StartupGate> {
       try {
         final user = await _api.getUser(appUserId);
         if (!mounted) return;
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => WalletHomeScreen(user: user)),
-        );
+        await _go(WalletHomeScreen(user: user));
         return;
       } catch (_) {
         // Falls through to the PIN/create-user fallback below.
@@ -115,20 +137,17 @@ class _StartupGateState extends State<_StartupGate> {
     final hasPin = await WalletService.hasPin();
     if (!mounted) return;
     if (hasWallet && hasPin) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => UnlockScreen(appUserId: appUserId)),
-      );
+      await _go(UnlockScreen(appUserId: appUserId));
       return;
     }
 
-    // Local id points at a user with no on-device key yet to log in
-    // with (e.g. onboarding was interrupted, or pointed at a different
-    // backend/DB) — fall back to creation rather than getting stuck on a
-    // blank screen. POST /users is idempotent by phone/email, so this
-    // resumes the same account rather than forking a new one.
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const CreateUserScreen()),
-    );
+    // Local id points at a user whose onboarding never finished on this
+    // device (no Stellar key / PIN to log in with — interrupted, or the
+    // app was pointed at a different backend/DB) — fall back to creation
+    // rather than getting stuck on a blank screen. POST /users is
+    // idempotent by phone/email, so this resumes the same account rather
+    // than forking a new one.
+    await _go(const CreateUserScreen());
   }
 
   @override
@@ -138,10 +157,15 @@ class _StartupGateState extends State<_StartupGate> {
 }
 
 /// Branded launch surface — the brand waves wallpaper (PfBackground,
-/// mounted app-wide), the approved logo mark, and the ribbon loader
-/// tracing underneath while the startup decision runs. Dark-default per
-/// the design brief (§1: splash lives on the logo's navy, never a default
-/// spinner).
+/// mounted app-wide) on the logo's navy. The mark DRAWS ITSELF (same
+/// code-drawn motif as the loader and transfer confirmation), the
+/// wordmark fades up once it has landed, and the ribbon loader traces
+/// underneath while the startup decision finishes. Dark-default per the
+/// design brief (§1). The launch moment, implemented as specced: the brand mark DRAWS ITSELF
+/// (the ribbon traces in flat blue→emerald gradient, the arrowhead settles
+/// — the same code-drawn motif as the loader and transfer confirmation,
+/// never a static PNG standing in for an animation), the wordmark fades up
+/// once the mark has landed. No glow, no bounce.
 class _SplashView extends StatelessWidget {
   const _SplashView();
 
@@ -155,31 +179,32 @@ class _SplashView extends StatelessWidget {
           child: Column(
             children: [
               const Spacer(flex: 2),
+              SizedBox(
+                width: 148,
+                height: 148,
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: 1),
+                  duration: const Duration(milliseconds: 1250),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, t, _) =>
+                      CustomPaint(painter: PfMarkPainter(t: t)),
+                ),
+              ),
+              const SizedBox(height: 26),
               TweenAnimationBuilder<double>(
                 tween: Tween(begin: 0, end: 1),
-                duration: const Duration(milliseconds: 550),
+                duration: const Duration(milliseconds: 450),
                 curve: PfMotion.easeOut,
                 builder: (context, t, child) => Opacity(
                   opacity: t,
                   child: Transform.translate(
-                    offset: Offset(0, 14 * (1 - t)),
+                    offset: Offset(0, 10 * (1 - t)),
                     child: child,
                   ),
                 ),
-                child: Column(
+                child: const Column(
                   children: [
-                    Image.asset(
-                      'assets/brand/payflex_logo.png',
-                      width: 128,
-                      height: 128,
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => const PfMarkIcon(
-                        size: 120,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 22),
-                    const Text(
+                    Text(
                       'PayFlex',
                       style: TextStyle(
                         color: PfColors.onNavy,
@@ -188,8 +213,8 @@ class _SplashView extends StatelessWidget {
                         letterSpacing: 0.2,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    const Text(
+                    SizedBox(height: 8),
+                    Text(
                       'Digital finance that moves with you',
                       style: TextStyle(
                         color: PfColors.onNavyMuted,

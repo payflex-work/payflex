@@ -1,44 +1,65 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { IsOptional, IsString } from 'class-validator';
 import { HmacTokenService } from '../common/hmac-token.service';
 import { UsersService } from '../users/users.service';
-import { TransferService } from './transfer.service';
 
 export interface QrPayload {
   recipientAppUserId: string;
-  recipientBmoniUserId: string;
+  recipientStellarPublicKey: string;
   amount: string;
-  currency: string;
+  assetCode: string;
+  assetIssuer?: string;
   expiresAt: string;
 }
 
+export class GenerateQrDto {
+  @IsString()
+  amount!: string;
+
+  @IsString()
+  assetCode!: string;
+
+  @IsOptional()
+  @IsString()
+  assetIssuer?: string;
+
+  @IsOptional()
+  @IsString()
+  expiresInSeconds?: number;
+}
+
 /**
- * App-layer QR Pay (build brief section 4.1) — a short-lived, HMAC-signed
- * payload naming a recipient/amount/currency (see HmacTokenService). This
- * has nothing to do with BMONI's own signing; it's just tamper-evidence
- * for a QR code that ultimately hands off to
- * TransferService.createTransfer once scanned.
+ * App-layer QR Pay — a short-lived, HMAC-signed payload naming a
+ * recipient/amount/asset (see HmacTokenService). Stellar-native now: the
+ * QR carries the recipient's Stellar public key, so the payer's app can
+ * build the payment entirely on-device. Scanning resolves via `decode`;
+ * after the payer signs and submits, they record the payment through
+ * TransferService with kind=QR_PAY and this token as qrTokenRef.
  */
 @Injectable()
 export class QrPayService {
   constructor(
     private readonly tokens: HmacTokenService,
     private readonly users: UsersService,
-    private readonly transfers: TransferService,
   ) {}
 
   async generate(
     appUserId: string,
-    params: { amount: string; currency: string; expiresInSeconds?: number },
+    params: { amount: string; assetCode: string; assetIssuer?: string; expiresInSeconds?: number },
   ): Promise<{ token: string; payload: QrPayload }> {
     const user = await this.users.findById(appUserId);
+    if (!user.stellarPublicKey) {
+      throw new BadRequestException('You must register a Stellar public key before generating a payment QR.');
+    }
     const expiresAt = new Date(
-      Date.now() + (params.expiresInSeconds ?? 300) * 1000,
+      Date.now() + (Number(params.expiresInSeconds ?? 300)) * 1000,
     ).toISOString();
     const payload: QrPayload = {
       recipientAppUserId: user.id,
-      recipientBmoniUserId: user.bmoniUserId,
+      recipientStellarPublicKey: user.stellarPublicKey,
       amount: params.amount,
-      currency: params.currency,
+      assetCode: params.assetCode,
+      assetIssuer: params.assetIssuer,
       expiresAt,
     };
     return { token: this.tokens.sign(payload), payload };
@@ -47,16 +68,5 @@ export class QrPayService {
   /** Scanning a QR resolves to this — a pre-filled confirm screen shows this before paying. */
   decode(token: string): QrPayload {
     return this.tokens.verify<QrPayload>(token);
-  }
-
-  /** Runs the actual proposal flow once a payer confirms a scanned QR. */
-  async pay(payerAppUserId: string, token: string) {
-    const payload = this.decode(token);
-    return this.transfers.createTransfer(payerAppUserId, {
-      toBmoniUserId: payload.recipientBmoniUserId,
-      amount: payload.amount,
-      currency: payload.currency,
-      description: 'QR Pay',
-    });
   }
 }

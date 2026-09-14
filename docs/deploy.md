@@ -9,6 +9,13 @@ endpoint `GET /v1/health` (does a Prisma `SELECT 1`, no auth).
 The app listens on `PORT` (defaults to 3000). Set the service root /
 Docker context to `backend/` on every platform.
 
+> **Status note:** this deployment runs the Stellar-testnet payment app.
+> There is no fiat rail and no identity-verification provider in this
+> build — nothing to paste a key into yet. See
+> [`fiat-kyc-gap.md`](fiat-kyc-gap.md) before planning a production
+> launch, and do not describe a deployment of this build as
+> "production-ready" in any user-facing material.
+
 ## Environment variables
 
 Set these in each platform's secrets/dashboard — never in a committed file.
@@ -19,19 +26,26 @@ Set these in each platform's secrets/dashboard — never in a committed file.
 | --- | --- |
 | `DATABASE_URL` | Postgres connection string (usually injected by the platform) |
 | `REDIS_URL` | e.g. `redis://...` (usually injected by the platform) |
-| `BMONI_ENV` | `sandbox` or `production` |
-| `BMONI_BASE_URL_SANDBOX` / `BMONI_BASE_URL_PRODUCTION` | Origin only — never append `/v1` (see `backend/src/config/bmoni.config.ts`) |
-| `BMONI_API_KEY_SANDBOX` / `BMONI_API_KEY_PRODUCTION` | The production key must be requested from developers@bkey.me — never use the sandbox key for real money movement |
 | `JWT_SECRET` | `openssl rand -hex 32`; rotating it logs every user out |
 | `QR_SIGNING_SECRET` | `openssl rand -hex 32`; rotating it invalidates in-flight QR codes |
 
-**Optional:**
+**Optional (Stellar network):**
 
 | Variable | Notes |
 | --- | --- |
-| `BMONI_WEBHOOK_SECRET` | Blank until BMONI confirms its webhook signing scheme |
-| `PAYFLEX_TREASURY_BMONI_USER_ID` / `PAYFLEX_TREASURY_OWNER_PRIVATE_KEY` | Loan disbursement only; in production this key belongs in a KMS/HSM, not a plain env var |
-| `STELLAR_NETWORK` / `STELLAR_HORIZON_URL` / `STELLAR_FRIENDBOT_URL` | Testnet defaults; mainnet requires setting network AND Horizon URL explicitly |
+| `STELLAR_NETWORK` | `testnet` (default) or `mainnet` |
+| `STELLAR_HORIZON_URL` | Blank on testnet uses the SDF default; **required** on mainnet |
+| `STELLAR_FRIENDBOT_URL` | Blank on testnet uses the SDF default; no mainnet equivalent |
+
+The mainnet guard is deliberate, not a default: `STELLAR_NETWORK=mainnet`
+without an explicit `STELLAR_HORIZON_URL` refuses to boot
+(`backend/src/config/stellar.config.ts`), because pointing unmediated,
+on-chain value at the wrong network is not a mistake the app should be
+able to make quietly.
+
+There are no provider/anchor/treasury credentials in this contract. When
+a real fiat or KYC provider is plugged in later, its credentials belong
+here as clearly-named variables — never hardcoded anywhere else.
 
 ## Railway
 
@@ -73,14 +87,12 @@ fly postgres attach payflex-db --app payflex-backend   # sets DATABASE_URL
 fly redis create --name payflex-redis
 fly redis status payflex-redis           # copy the private connection URL
 fly secrets set REDIS_URL="redis://..."  # from the previous step
-fly secrets set BMONI_ENV=sandbox \
-  BMONI_BASE_URL_SANDBOX="https://embedded-dev.bmoni.com" \
-  BMONI_API_KEY_SANDBOX="<sandbox key>" \
-  JWT_SECRET="$(openssl rand -hex 32)" \
+fly secrets set JWT_SECRET="$(openssl rand -hex 32)" \
   QR_SIGNING_SECRET="$(openssl rand -hex 32)"
 fly deploy
 ```
 
+`STELLAR_NETWORK` can be left unset (testnet default) or set explicitly.
 Traffic is only routed to machines passing `/v1/health` (60s grace period
 covers migration time).
 
@@ -89,9 +101,11 @@ covers migration time).
 - **Migrations are never skipped**: entrypoint migrates before serving;
   a migration failure exits the container so the orchestrator restarts it
   instead of serving against a broken schema.
-- **Production BMONI checklist**: `BMONI_ENV=production` requires
-  `BMONI_BASE_URL_PRODUCTION` + `BMONI_API_KEY_PRODUCTION` (from
-  developers@bkey.me); the boot check refuses to start otherwise.
+- **Mainnet checklist** (when this is ever flipped): set
+  `STELLAR_NETWORK=mainnet` AND `STELLAR_HORIZON_URL` together — the boot
+  check refuses one without the other. Mainnet means real, irreversible
+  funds with no custodian and no recovery path; treat it as a
+  business/compliance decision, not a config change.
 - The old Vercel deploy path (`/vercel.json`) was removed — Vercel has no
   long-running Postgres/Redis story for this service.
 

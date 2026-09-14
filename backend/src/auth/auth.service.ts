@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
-import { verifyMessage } from 'ethers';
+import { Keypair } from '@stellar/stellar-sdk';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -9,12 +9,11 @@ import { UsersService } from '../users/users.service';
 const CHALLENGE_TTL_SECONDS = 5 * 60;
 
 /**
- * Login proves ownership of the same on-device EVM key BMONI's
- * owner-proof-challenge already relies on — no separate password/OTP
- * system to build or store. The app already has `WalletService.
- * signChallenge` wired up for that exact EIP-191 personal_sign shape
- * (see app/lib/services/wallet_service.dart), so logging in from the app
- * is one more call to a method it already has, not a new capability.
+ * Login proves ownership of the user's on-device Stellar keypair — the same
+ * key that signs every payment — so there is no separate password/OTP
+ * system to build or store. The challenge is a plain string; the app signs
+ * it with the device's Stellar secret seed (StellarKeyService) and the
+ * backend verifies the Ed25519 signature against the registered public key.
  */
 @Injectable()
 export class AuthService {
@@ -27,10 +26,10 @@ export class AuthService {
 
   async createChallenge(appUserId: string): Promise<{ message: string }> {
     const user = await this.users.findById(appUserId);
-    if (!user.ownerAddress) {
+    if (!user.stellarPublicKey) {
       throw new BadRequestException(
-        `User ${appUserId} has no owner address registered yet — set one via ` +
-          `PATCH /users/${appUserId}/owner-address (using the bootstrap token from account ` +
+        `User ${appUserId} has no Stellar public key registered yet — set one via ` +
+          `PATCH /users/${appUserId}/stellar-public-key (using the bootstrap token from account ` +
           `creation) before logging in.`,
       );
     }
@@ -40,10 +39,10 @@ export class AuthService {
     return { message };
   }
 
-  async login(appUserId: string, signature: string) {
+  async login(appUserId: string, signatureHex: string) {
     const user = await this.users.findById(appUserId);
-    if (!user.ownerAddress) {
-      throw new BadRequestException(`User ${appUserId} has no owner address registered yet.`);
+    if (!user.stellarPublicKey) {
+      throw new BadRequestException(`User ${appUserId} has no Stellar public key registered yet.`);
     }
 
     const message = await this.redis.getAndDelete(this.challengeKey(appUserId));
@@ -51,17 +50,25 @@ export class AuthService {
       throw new UnauthorizedException('No pending login challenge — request a new one.');
     }
 
-    let recovered: string;
+    let keypair: Keypair;
     try {
-      recovered = verifyMessage(message, signature);
+      keypair = Keypair.fromPublicKey(user.stellarPublicKey);
     } catch {
-      throw new UnauthorizedException('Malformed signature.');
-    }
-    if (recovered.toLowerCase() !== user.ownerAddress.toLowerCase()) {
-      throw new UnauthorizedException("Signature doesn't match this user's registered owner address.");
+      throw new UnauthorizedException("Registered public key is malformed — account is unrecoverable as configured.");
     }
 
-    return this.issueTokens(user.id, user.bmoniUserId);
+    const signatureOk = (() => {
+      try {
+        return keypair.verify(Buffer.from(message, 'utf8'), Buffer.from(signatureHex, 'hex'));
+      } catch {
+        return false;
+      }
+    })();
+    if (!signatureOk) {
+      throw new UnauthorizedException("Signature doesn't match this user's registered Stellar public key.");
+    }
+
+    return this.issueTokens(user.id, user.stellarPublicKey);
   }
 
   async refresh(refreshToken: string) {
@@ -80,11 +87,11 @@ export class AuthService {
     // one stops working the moment the legitimate client refreshes first.
     await this.prisma.refreshToken.update({ where: { jti: payload.jti }, data: { revoked: true } });
 
-    return this.issueTokens(user.id, user.bmoniUserId);
+    return this.issueTokens(user.id, user.stellarPublicKey!);
   }
 
-  private async issueTokens(appUserId: string, bmoniUserId: string) {
-    const accessToken = this.tokens.signAccessToken(appUserId, bmoniUserId);
+  private async issueTokens(appUserId: string, stellarPublicKey: string) {
+    const accessToken = this.tokens.signAccessToken(appUserId, stellarPublicKey);
     const { token: refreshToken, jti } = this.tokens.signRefreshToken(appUserId);
     await this.prisma.refreshToken.create({
       data: {

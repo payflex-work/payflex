@@ -2,12 +2,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'api_client.dart';
 import 'wallet_service.dart';
 
-/// Owns the login lifecycle on top of the on-device owner key: performing
-/// a full challenge-response login (needs the PIN, since it must sign with
-/// WalletService), silently restoring a session from a persisted refresh
-/// token (no PIN needed), and logging out. ApiClient.accessToken/
-/// refreshToken are the in-memory session; this class is the only thing
-/// that should read/write [_refreshTokenKey] in SharedPreferences.
+/// Owns the login lifecycle on top of the on-device Stellar key:
+/// performing a full challenge-response login (needs the PIN, since it
+/// must sign with WalletService), silently restoring a session from a
+/// persisted refresh token (no PIN needed), and logging out.
+/// ApiClient.accessToken/refreshToken are the in-memory session; this
+/// class is the only thing that should read/write [_refreshTokenKey] in
+/// SharedPreferences.
 class SessionManager {
   static const _refreshTokenKey = 'payflex.refreshToken';
 

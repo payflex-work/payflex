@@ -1,172 +1,215 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
+import { randomBytes } from 'crypto';
+import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
-import { UsersService } from '../users/users.service';
-import { TransferService } from '../transfer/transfer.service';
-import { TreasuryService } from '../treasury/treasury.service';
+import { StellarService } from '../stellar/stellar.service';
 import { HmacTokenService } from '../common/hmac-token.service';
-import { BmoniApiError } from '../bmoni/bmoni.errors';
-import { SendViaLinkDto } from './dto/send-via-link.dto';
+import { UsersService } from '../users/users.service';
 
-interface ClaimTokenPayload {
-  claimableLinkId: string;
-  expiresAt: string;
+export class SendViaLinkDto {
+  /** Decimal string exactly as it will appear on-chain. */
+  @IsString()
+  amount!: string;
+
+  @IsString()
+  assetCode!: string;
+
+  @IsOptional()
+  @IsString()
+  assetIssuer?: string;
+
+  /** Days until the link expires (chain claimants can't be removed, but the
+   * backend stops advertising the link after this). */
+  @IsOptional()
+  @IsString()
+  expiresInDays?: string;
+}
+
+export class RegisterClaimableBalanceDto {
+  @IsString()
+  @IsNotEmpty()
+  claimableBalanceId!: string;
+}
+
+export class ClaimLinkDto {
+  @IsString()
+  @Matches(/^G[A-Z2-7]{55}$/, { message: 'claimantPublicKey must be an Ed25519 account strkey.' })
+  claimantPublicKey!: string;
+
+  /** The on-chain transaction that performed the claim (claimed_claimable_balance). */
+  @IsString()
+  claimTxHash!: string;
 }
 
 /**
- * Send-via-link (build brief section 4.4 / section 3). BMONI has no
- * claimable-balance primitive at all, so a link to someone without a
- * BMONI account routes through PayFlex's own treasury account as an
- * escrow holder. See the LONG doc comment on the ClaimableLink model in
- * schema.prisma before changing anything here — this is a real
- * liability/compliance surface per the brief, not a normal feature.
+ * Send-via-link, NON-CUSTODIAL on native Stellar claimable balances.
+ *
+ * An earlier design held link funds in PayFlex's own treasury — a real
+ * liability surface the brief flagged. That is gone by construction:
+ *
+ *  1. The sender's app creates an on-chain CREATE_CLAIMABLE_BALANCE with
+ *     the recipient (or, before the recipient has a key, the SENDER as the
+ *     reclaimant) as claimant — funds are escrowed BY THE CHAIN, never in
+ *     a PayFlex-owned account.
+ *  2. The sender registers the claimable-balance id here; the backend
+ *     VERIFIES on Horizon that the CB exists with the exact amount/asset,
+ *     then marks the link FUNDED.
+ *  3. The recipient claims on-chain (their own signature) and the claim
+ *     transaction is verified the same way before the record flips to
+ *     CLAIMED.
+ *
+ * PayFlex is a directory and a verifier here — a money holder nowhere.
  */
 @Injectable()
 export class LinksService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly stellar: StellarService,
     private readonly users: UsersService,
-    private readonly transfers: TransferService,
-    private readonly treasury: TreasuryService,
     private readonly tokens: HmacTokenService,
   ) {}
 
+  /**
+   * Creates the link record and returns the signed shareable token. The
+   * sender's app builds the on-chain claimable balance AFTER this (using
+   * the returned parameters), then registers its id via registerClaimableBalance.
+   */
   async sendViaLink(senderAppUserId: string, dto: SendViaLinkDto) {
-    if (dto.toBmoniUserId) {
-      const recipient = await this.prisma.appUser.findUnique({
-        where: { bmoniUserId: dto.toBmoniUserId },
-      });
-      if (recipient) {
-        // Brief section 4.4: "If the recipient already has a bmoniUserId,
-        // it's a normal transfer" — no escrow, no ClaimableLink row.
-        const proposal = await this.transfers.createTransfer(senderAppUserId, {
-          toBmoniUserId: recipient.bmoniUserId,
-          amount: dto.amount,
-          currency: dto.currency,
-          description: 'Send via link',
-        });
-        return { type: 'DIRECT_TRANSFER' as const, proposal };
-      }
-    }
+    const sender = await this.users.findById(senderAppUserId);
 
-    return this.createEscrowedLink(senderAppUserId, dto);
-  }
+    const rawSecret = randomBytes(24).toString('base64url');
+    const tokenHash = this.hashToken(rawSecret);
+    const expiresAt = new Date(
+      Date.now() + Number(dto.expiresInDays ?? 7) * 24 * 60 * 60 * 1000,
+    );
 
-  private async createEscrowedLink(senderAppUserId: string, dto: SendViaLinkDto) {
-    await this.treasury.getWalletId(dto.currency); // fail fast if treasury lacks this wallet
-
-    const link = await this.prisma.claimableLink.create({
+    const link = await this.prisma.linkRecord.create({
       data: {
         senderAppUserId,
+        tokenHash,
         amount: dto.amount,
-        currency: dto.currency,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+        assetCode: dto.assetCode,
+        assetIssuer: dto.assetIssuer,
+        expiresAt,
       },
     });
 
-    const escrowProposal = await this.transfers.createTransfer(senderAppUserId, {
-      toBmoniUserId: this.treasury.getBmoniUserId(),
-      amount: dto.amount,
-      currency: dto.currency,
-      description: `Send via link (escrow): ${link.id}`,
-    });
-
-    await this.prisma.claimableLink.update({
-      where: { id: link.id },
-      data: { status: 'ESCROWED', escrowProposalId: escrowProposal.id },
-    });
-
-    const claimToken = this.tokens.sign<ClaimTokenPayload>({
-      claimableLinkId: link.id,
-      expiresAt: link.expiresAt.toISOString(),
-    });
+    const shareToken = this.tokens.sign({ l: link.id, s: rawSecret });
 
     return {
-      type: 'ESCROW' as const,
-      // The sender still has to sign/submit escrowProposal via the normal
-      // transfer endpoints — creating it here doesn't move any funds yet.
-      escrowProposal,
-      claimToken,
-    };
-  }
-
-  /** Public preview for a claim landing page, before the recipient necessarily has an account. */
-  async previewClaim(token: string) {
-    const { claimableLinkId } = this.tokens.verify<ClaimTokenPayload>(token);
-    const link = await this.prisma.claimableLink.findUnique({
-      where: { id: claimableLinkId },
-      include: { sender: true },
-    });
-    if (!link) throw new NotFoundException(`No claimable link ${claimableLinkId}.`);
-    return {
-      amount: link.amount,
-      currency: link.currency,
-      senderName: `${link.sender.firstName} ${link.sender.lastName}`,
-      status: link.status,
-      expiresAt: link.expiresAt,
+      linkId: link.id,
+      shareToken,
+      // What the sender's app must build on-chain:
+      instructions: {
+        operation: 'create_claimable_balance',
+        asset: dto.assetCode === 'XLM' ? 'native' : { code: dto.assetCode, issuer: dto.assetIssuer },
+        amount: dto.amount,
+        // Before the recipient is known, the SENDER is the sole claimant so
+        // they can reclaim their funds; once a recipient is picked, their
+        // app re-creates or the claimant list is extended on-chain.
+        claimants: sender.stellarPublicKey ? [sender.stellarPublicKey] : [],
+        note: 'Funds are escrowed on-chain by this claimable balance — never held by PayFlex.',
+      },
     };
   }
 
   /**
-   * Releases the escrowed funds to the claimant — signed by PayFlex's
-   * treasury server-side (same pattern as loan disbursement), since it's
-   * the treasury's own escrowed balance moving out under its own
-   * authority. The claimant needs a PayFlex account (and thus a
-   * bmoniUserId) to reach this at all — until then they only have
-   * `previewClaim`'s read-only view.
+   * Preview of a share token for the recipient's app (public, HMAC-verified).
+   * The link id and claimable-balance id are returned so the recipient's app
+   * can perform the on-chain claim itself — only holders of the share token
+   * ever see them, which is exactly the audience meant to claim.
    */
-  async claim(claimantAppUserId: string, token: string) {
-    const { claimableLinkId } = this.tokens.verify<ClaimTokenPayload>(token);
-    const link = await this.prisma.claimableLink.findUnique({ where: { id: claimableLinkId } });
-    if (!link) throw new NotFoundException(`No claimable link ${claimableLinkId}.`);
-    if (link.status !== 'ESCROWED') {
-      throw new BadRequestException(`This link is ${link.status.toLowerCase()}, not claimable.`);
+  async preview(token: string) {
+    const payload = this.tokens.verify<{ l: string; s: string }>(token);
+    const link = await this.prisma.linkRecord.findUnique({ where: { id: payload.l } });
+    if (!link || link.tokenHash !== this.hashToken(payload.s)) {
+      throw new NotFoundException('This link does not exist or has been revoked.');
     }
-    if (link.expiresAt.getTime() < Date.now()) {
-      await this.prisma.claimableLink.update({
-        where: { id: link.id },
-        data: { status: 'EXPIRED' },
-      });
-      throw new BadRequestException('This link has expired.');
-    }
-
-    const claimant = await this.users.findById(claimantAppUserId);
-    const treasuryAppUserId = await this.treasury.getAppUserId();
-
-    const releaseProposal = await this.transfers.createTransfer(treasuryAppUserId, {
-      toBmoniUserId: claimant.bmoniUserId,
+    const sender = await this.users.findById(link.senderAppUserId);
+    const cb = link.claimableBalanceId ? await this.stellar.getClaimableBalance(link.claimableBalanceId) : null;
+    return {
+      linkId: link.id,
+      claimableBalanceId: link.claimableBalanceId,
       amount: link.amount,
-      currency: link.currency,
-      description: `Claimable link release: ${link.id}`,
-    });
+      assetCode: link.assetCode,
+      status: link.status,
+      expiresAt: link.expiresAt,
+      senderFirstName: sender.firstName,
+      claimableBalanceExists: Boolean(cb),
+    };
+  }
 
-    const signPayload = await this.waitForSignPayload(treasuryAppUserId, releaseProposal.id);
-    const signature = this.treasury.signDigest(signPayload.signingPayloadHash);
-    await this.transfers.submitSignature(treasuryAppUserId, releaseProposal.id, signature);
+  /** The sender's app reports the on-chain CB id; verified against Horizon. */
+  async registerClaimableBalance(senderAppUserId: string, linkId: string, dto: RegisterClaimableBalanceDto) {
+    await this.users.findById(senderAppUserId);
+    const link = await this.prisma.linkRecord.findUnique({ where: { id: linkId } });
+    if (!link || link.senderAppUserId !== senderAppUserId) {
+      throw new NotFoundException('Link not found for this sender.');
+    }
 
-    return this.prisma.claimableLink.update({
-      where: { id: link.id },
-      data: {
-        status: 'CLAIMED',
-        claimedByAppUserId: claimantAppUserId,
-        claimedAt: new Date(),
-        releaseProposalId: releaseProposal.id,
-      },
+    const cb = await this.stellar.getClaimableBalance(dto.claimableBalanceId);
+    if (!cb) {
+      throw new BadRequestException('No claimable balance with this id exists on-ledger.');
+    }
+    const amountMatches = Math.abs(Number(cb.amount) - Number(link.amount)) < 1e-9;
+    const cbCode = cb.assetType === 'native' ? 'XLM' : cb.assetCode;
+    if (!amountMatches || cbCode !== link.assetCode) {
+      throw new BadRequestException(
+        `On-chain claimable balance does not match the link (${cb.amount} ${cbCode} vs ${link.amount} ${link.assetCode}).`,
+      );
+    }
+
+    return this.prisma.linkRecord.update({
+      where: { id: linkId },
+      data: { claimableBalanceId: dto.claimableBalanceId, status: 'FUNDED' },
     });
   }
 
-  /** Sign payload is prepared asynchronously — it can 409 briefly after proposal creation; poll. */
-  private async waitForSignPayload(appUserId: string, proposalId: string) {
-    for (let attempt = 0; attempt < 8; attempt++) {
-      try {
-        return await this.transfers.getSignPayload(appUserId, proposalId);
-      } catch (err) {
-        if (err instanceof BmoniApiError && err.status === 409 && attempt < 7) {
-          await new Promise((r) => setTimeout(r, 1500));
-          continue;
-        }
-        throw err;
-      }
+  /**
+   * The recipient reports they claimed on-chain. The claim transaction is
+   * verified before the record is marked CLAIMED — the backend cannot be
+   * talked into marking a claim that didn't happen.
+   */
+  async claim(appUserId: string, linkId: string, dto: ClaimLinkDto) {
+    await this.users.findById(appUserId);
+
+    const link = await this.prisma.linkRecord.findUnique({ where: { id: linkId } });
+    if (!link?.claimableBalanceId) {
+      throw new NotFoundException('This link has no funded claimable balance yet.');
     }
-    throw new Error(`Sign payload for proposal ${proposalId} never became ready.`);
+
+    // Two chain facts, both authoritative:
+    //  1. The claim transaction exists and succeeded.
+    //  2. The claimable balance is GONE from the ledger — a CB cannot be
+    //     claimed twice, so its disappearance is the chain's own proof.
+    const claimTxOk = await this.stellar.isTransactionSuccessful(dto.claimTxHash);
+    if (!claimTxOk) {
+      throw new BadRequestException('Claim transaction not found or not successful on-ledger.');
+    }
+
+    const stillThere = await this.stellar.getClaimableBalance(link.claimableBalanceId);
+    if (stillThere) {
+      throw new BadRequestException(
+        'Claimable balance is still unclaimed on-ledger — the claim transaction must actually consume it.',
+      );
+    }
+
+    return this.prisma.linkRecord.update({
+      where: { id: linkId },
+      data: { status: 'CLAIMED', claimedByAppUserId: appUserId, claimedAt: new Date() },
+    });
+  }
+
+  async listForSender(senderAppUserId: string) {
+    await this.users.findById(senderAppUserId);
+    return this.prisma.linkRecord.findMany({
+      where: { senderAppUserId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  private hashToken(raw: string): string {
+    return createHash('sha256').update(raw).digest('hex');
   }
 }

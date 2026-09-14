@@ -2,10 +2,9 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
-/// Base URL of the PayFlex orchestration backend (NestJS) — NOT BMONI's
-/// API. The app never talks to BMONI directly; every call goes through
-/// our own backend, which owns the single BmoniClient. See
-/// backend/src/bmoni/bmoni-client.service.ts.
+/// Base URL of the PayFlex orchestration backend (NestJS). The app also
+/// talks DIRECTLY to Horizon (a public blockchain API) via
+/// lib/stellar/stellar_client.dart — the backend never proxies payments.
 ///
 /// Override at build/run time with:
 ///   flutter run --dart-define=BACKEND_BASE_URL=http://10.0.2.2:3000

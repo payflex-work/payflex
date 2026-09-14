@@ -1,27 +1,36 @@
-/// Mirrors backend/prisma/schema.prisma's ClaimableLink (build brief
-/// section 4.4 / section 3 — send-via-link escrow). See the schema's doc
-/// comment there before assuming this is "just a feature" — while a link
-/// is ESCROWED, PayFlex is holding a real customer's funds.
+/// Preview of a send-via-link share token, mirroring
+/// backend/src/links/links.service.ts's preview response. Funds behind a
+/// link sit in an on-chain claimable balance (chain escrow) — PayFlex
+/// never holds them.
 class ClaimPreview {
+  final String linkId;
+  final String? claimableBalanceId;
   final String amount;
-  final String currency;
-  final String senderName;
+  final String assetCode;
   final String status;
   final String expiresAt;
+  final String senderName;
+  final bool claimableBalanceExists;
 
   ClaimPreview({
+    required this.linkId,
+    this.claimableBalanceId,
     required this.amount,
-    required this.currency,
-    required this.senderName,
+    required this.assetCode,
     required this.status,
     required this.expiresAt,
+    required this.senderName,
+    required this.claimableBalanceExists,
   });
 
   factory ClaimPreview.fromJson(Map<String, dynamic> json) => ClaimPreview(
+        linkId: json['linkId'] as String,
+        claimableBalanceId: json['claimableBalanceId'] as String?,
         amount: json['amount'] as String,
-        currency: json['currency'] as String,
-        senderName: json['senderName'] as String,
+        assetCode: json['assetCode'] as String,
         status: json['status'] as String,
         expiresAt: json['expiresAt'] as String,
+        senderName: json['senderFirstName'] as String? ?? 'someone',
+        claimableBalanceExists: json['claimableBalanceExists'] as bool? ?? false,
       );
 }

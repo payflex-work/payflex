@@ -1,23 +1,21 @@
 import 'package:flutter/material.dart';
 import '../../models/app_user.dart';
-import '../../models/transfer.dart';
 import '../../services/api_client.dart';
 import '../../services/transfer_flow.dart';
 import '../../theme/payflex_tokens.dart';
 import '../../theme/payflex_theme.dart';
-import '../../utils/format.dart';
 import '../../utils/money.dart';
 import '../../widgets/pf_balance_card.dart';
 import '../../widgets/pf_buttons.dart';
 import '../../widgets/pf_flow.dart';
 import '../../widgets/pf_states.dart';
 
-enum _RecipientMode { payTag, bmoniUserId, address }
+enum _RecipientMode { payTag, address }
 
-/// Direct transfer entry point (build brief §4.2 PayTag mode, plus a raw
-/// bmoniUserId/address fallback). QR Pay is a separate screen that
-/// ultimately calls the same TransferService flow — see qr_pay_screen.dart
-/// and ApiClient.createTransfer/payQr.
+/// Direct payment entry point: PayTag or raw Stellar address. The
+/// recipient is resolved against the PayFlex directory first (so the user
+/// sees WHO they're paying), then the payment is built, signed on-device,
+/// submitted to Horizon, and recorded — see transfer_flow.dart.
 class SendMoneyScreen extends StatefulWidget {
   final AppUser user;
   const SendMoneyScreen({super.key, required this.user});
@@ -31,7 +29,7 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
   _RecipientMode _mode = _RecipientMode.payTag;
   final _recipientController = TextEditingController();
   final _amountController = TextEditingController();
-  String _currency = 'NGN';
+  String _assetCode = 'XLM';
   bool _busy = false;
   String? _error;
 
@@ -42,55 +40,61 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
     super.dispose();
   }
 
-  String get _recipientLabel => switch (_mode) {
-        _RecipientMode.payTag => '@${_recipientController.text}',
-        _RecipientMode.bmoniUserId => _recipientController.text,
-        _RecipientMode.address => shortRef(_recipientController.text),
-      };
-
   Future<void> _send() async {
+    final recipient = _recipientController.text.trim();
+    if (recipient.isEmpty || parseAmount(_amountController.text) <= 0) {
+      setState(() => _error = 'Enter a recipient and an amount.');
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final proposal = await _api.createTransfer(
+      // 1. Resolve the destination (directory lookup — no chain call).
+      final target = await _api.resolveTransfer(
         widget.user.id,
-        toPayTag: _mode == _RecipientMode.payTag ? _recipientController.text : null,
-        toBmoniUserId: _mode == _RecipientMode.bmoniUserId ? _recipientController.text : null,
-        toAddress: _mode == _RecipientMode.address ? _recipientController.text : null,
-        amount: _amountController.text,
-        currency: _currency,
+        toPayTag: _mode == _RecipientMode.payTag
+            ? (recipient.startsWith('@') ? recipient.substring(1) : recipient)
+            : null,
+        toPublicKey: _mode == _RecipientMode.address ? recipient : null,
       );
 
       if (!mounted) return;
-      final signed = await signAndSubmitTransfer(context, _api, widget.user.id, proposal.id);
-      if (signed == null) {
+      // 2-4. PIN → build → sign on-device → submit → record.
+      final result = await signAndSubmitTransfer(
+        context,
+        _api,
+        widget.user.id,
+        toPublicKey: target.toPublicKey,
+        amount: _amountController.text.trim(),
+        assetCode: _assetCode,
+        kind: TransferKind.transfer,
+      );
+      if (!mounted) return;
+      if (result == null) {
         setState(() => _error = 'Cancelled — no signature was submitted, so nothing moved.');
         return;
       }
-      if (!mounted) return;
-      final outcome = _outcomeFor(signed);
-      await showPfConfirmation(context, outcome: outcome, receipt: outcome);
-      if (mounted) Navigator.of(context).pop();
+      if (result.success) {
+        final outcome = outcomeForPayment(
+          result,
+          headline: 'Sent',
+          amount: _amountController.text.trim(),
+          assetCode: _assetCode,
+          caption: 'to ${target.displayName}',
+          methodLabel: 'Direct payment',
+        );
+        await showPfConfirmation(context, outcome: outcome, receipt: outcome);
+        if (mounted) Navigator.of(context).pop();
+      } else {
+        setState(() => _error = result.errorMessage ?? 'The payment was rejected on-chain.');
+      }
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _busy = false);
     }
-  }
-
-  PfFlowOutcome _outcomeFor(Proposal signed) {
-    return PfFlowOutcome(
-      headline: 'Sent',
-      amount: signed.amount,
-      currency: signed.currency,
-      caption: 'to $_recipientLabel',
-      reference: signed.id,
-      statusLabel: humanTransferStatus(signed.status),
-      statusTone: transferTone(signed.status),
-      methodLabel: 'Direct transfer',
-    );
   }
 
   @override
@@ -118,8 +122,8 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
                   ),
                   const SizedBox(height: 4),
                   const Text(
-                    'Send to another PayFlex account by PayTag, user ID or '
-                    'wallet address.',
+                    'Send to another PayFlex account by PayTag, or straight to '
+                    'any Stellar address.',
                     style: TextStyle(
                       color: PfColors.inkMuted,
                       fontSize: 13.5,
@@ -130,7 +134,6 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
                   SegmentedButton<_RecipientMode>(
                     segments: const [
                       ButtonSegment(value: _RecipientMode.payTag, label: Text('PayTag')),
-                      ButtonSegment(value: _RecipientMode.bmoniUserId, label: Text('User ID')),
                       ButtonSegment(value: _RecipientMode.address, label: Text('Address')),
                     ],
                     selected: {_mode},
@@ -141,9 +144,8 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
                     controller: _recipientController,
                     decoration: InputDecoration(
                       labelText: switch (_mode) {
-                        _RecipientMode.payTag => '@PayTag',
-                        _RecipientMode.bmoniUserId => 'Recipient BMONI user ID',
-                        _RecipientMode.address => 'Recipient wallet address (0x…)',
+                        _RecipientMode.payTag => 'Recipient PayTag',
+                        _RecipientMode.address => 'Recipient Stellar address',
                       },
                       prefixIcon: const Icon(Icons.alternate_email_outlined, size: 20),
                     ),
@@ -152,9 +154,9 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
                   const SizedBox(height: 6),
                   Text(
                     switch (_mode) {
-                      _RecipientMode.payTag => 'Their @handle — resolved against the PayFlex directory.',
-                      _RecipientMode.bmoniUserId => 'The 36-char id from their profile.',
-                      _RecipientMode.address => 'Their BMONI smart-wallet address.',
+                      _RecipientMode.payTag =>
+                        'Their @handle — resolved against the PayFlex directory before anything is signed.',
+                      _RecipientMode.address => 'Their Stellar public key (G…).',
                     },
                     style: const TextStyle(color: PfColors.inkFaint, fontSize: 12),
                   ),
@@ -193,13 +195,12 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
                           ),
                         ),
                         DropdownButton<String>(
-                          value: _currency,
+                          value: _assetCode,
                           underline: const SizedBox.shrink(),
                           items: const [
-                            DropdownMenuItem(value: 'NGN', child: Text('NGN')),
-                            DropdownMenuItem(value: 'USD', child: Text('USD')),
+                            DropdownMenuItem(value: 'XLM', child: Text('XLM')),
                           ],
-                          onChanged: (v) => setState(() => _currency = v!),
+                          onChanged: (v) => setState(() => _assetCode = v!),
                         ),
                       ],
                     ),
@@ -209,7 +210,7 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 6),
                     child: Text(
                       parseAmount(_amountController.text) > 0
-                          ? 'You\u2019re sending ${formatMoney(_amountController.text, _currency)}'
+                          ? 'You\u2019re sending ${formatMoney(_amountController.text, _assetCode)}'
                           : 'Sign the payment with your 6-digit PIN when it\u2019s ready.',
                       style: const TextStyle(
                         color: PfColors.inkMuted,
@@ -217,7 +218,19 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 22),
+                  const SizedBox(height: 6),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 6),
+                    child: Text(
+                      'Stellar payments are irreversible once they confirm on-chain.',
+                      style: TextStyle(
+                        color: PfColors.inkFaint,
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
                   if (_error != null) ...[
                     PfInlineError(message: _error!),
                     const SizedBox(height: 14),
@@ -238,20 +251,5 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
   }
 }
 
-/// Shared status label used across every transfer payoff: raw backend
-/// status ("PENDING_SETTLEMENT") → "Pending settlement".
-String humanTransferStatus(String status) {
-  final words = status.toLowerCase().split('_');
-  if (words.isEmpty) return status;
-  return words.map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}').join(' ');
-}
-
-PfTone transferTone(String status) {
-  final s = status.toUpperCase();
-  if (s.contains('FAIL') || s.contains('REJECT')) return PfTone.warn;
-  if (s.contains('COMPLETE') || s.contains('SUCCESS') || s.contains('SETTLED') ||
-      s.contains('EXECUT')) {
-    return PfTone.success;
-  }
-  return PfTone.info;
-}
+/// Kept as a shared helper for other screens' receipt chips.
+PfTone transferToneFromBool(bool success) => success ? PfTone.success : PfTone.warn;

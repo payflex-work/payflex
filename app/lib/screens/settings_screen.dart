@@ -22,12 +22,9 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-enum _RailState { active, pending, none }
-
 class _SettingsScreenState extends State<SettingsScreen> {
   final _api = ApiClient();
   final _store = LocalUserStore();
-  Map<String, dynamic>? _onboarding;
   String? _statusError;
   bool _loaded = false;
 
@@ -43,12 +40,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _statusError = null;
     });
     try {
-      final status = await withRetry(
+      await withRetry(
         () => _api.getOnboardingStatus(widget.user.id),
       );
       if (mounted) {
         setState(() {
-          _onboarding = status;
           _loaded = true;
         });
       }
@@ -62,31 +58,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  _RailState _railState(String key) {
-    final value = (_onboarding?[key] as String?) ?? 'not_started';
-    if (value == 'active') return _RailState.active;
-    if (value == 'not_started') return _RailState.none;
-    return _RailState.pending;
-  }
-
   String get _tierLabel {
     if (!_loaded) return 'Checking…';
-    const rails = ['anchorStatus', 'bridgeStatus', 'moneriumStatus', 'paytrieStatus', 'etherfuseStatus'];
-    final anyActive = rails.any((r) => _railState(r) == _RailState.active);
-    final anyPending = rails.any((r) => _railState(r) == _RailState.pending);
-    if (anyActive) return 'Verified';
-    if (anyPending) return 'Verification in progress';
-    return 'Setup not started';
+    if (widget.user.identityVerified) return 'Verified';
+    return 'Identity verification not configured';
   }
 
   PfTone get _tierTone {
     if (!_loaded) return PfTone.muted;
-    const rails = ['anchorStatus', 'bridgeStatus', 'moneriumStatus', 'paytrieStatus', 'etherfuseStatus'];
-    final anyActive = rails.any((r) => _railState(r) == _RailState.active);
-    final anyPending = rails.any((r) => _railState(r) == _RailState.pending);
-    if (anyActive) return PfTone.success;
-    if (anyPending) return PfTone.warn;
-    return PfTone.muted;
+    return widget.user.identityVerified ? PfTone.success : PfTone.warn;
   }
 
   Future<void> _signOut() async {
@@ -264,22 +244,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: [
                       _settingsRow(
                         icon: Icons.verified_outlined,
-                        label: 'Account tier',
+                        label: 'Identity verification',
                         value: _tierLabel,
                         tone: _tierTone,
                       ),
                       const Divider(color: PfColors.navyBorder),
                       _settingsRow(
-                        icon: Icons.language_outlined,
-                        label: 'NGN rail',
-                        value: _railLabel('anchorStatus'),
-                        tone: _railTone('anchorStatus'),
-                      ),
-                      _settingsRow(
-                        icon: Icons.public_outlined,
-                        label: 'USD rail',
-                        value: _railLabel('bridgeStatus'),
-                        tone: _railTone('bridgeStatus'),
+                        icon: Icons.currency_exchange_outlined,
+                        label: 'Fiat on/off-ramp',
+                        value: widget.user.fiatCapable ? 'Available' : 'Not configured',
+                        tone: widget.user.fiatCapable ? PfTone.success : PfTone.muted,
                       ),
                     ],
                   ),
@@ -288,8 +262,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 6, vertical: 8),
                   child: Text(
-                    'Tiers and rail status come from your live onboarding state — '
-                    'complete KYC per currency to unlock more.',
+                    'Identity verification and fiat on/off-ramps are not '
+                    'implemented yet — no provider is plugged in. The app is '
+                    'hard-gated until one is: see docs/fiat-kyc-gap.md.',
                     style: TextStyle(
                       color: PfColors.onNavyFaint,
                       fontSize: 11.5,
@@ -400,7 +375,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       _supportTile(
                         icon: Icons.info_outline_rounded,
                         title: 'About PayFlex',
-                        subtitle: 'v0.1.0 · BMONI smart-wallet rails',
+                        subtitle: 'v0.2.0 · Stellar, non-custodial',
                         onTap: () {
                           Navigator.of(context).push(
                             MaterialPageRoute(
@@ -426,18 +401,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-
-  String _railLabel(String key) => switch (_railState(key)) {
-        _RailState.active => 'Active',
-        _RailState.pending => 'Pending',
-        _RailState.none => 'Not started',
-      };
-
-  PfTone _railTone(String key) => switch (_railState(key)) {
-        _RailState.active => PfTone.success,
-        _RailState.pending => PfTone.warn,
-        _RailState.none => PfTone.muted,
-      };
 
   Widget _settingsRow({
     required IconData icon,
@@ -505,23 +468,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const Text('Where is my money?', style: TextStyle(color: PfColors.onNavy, fontSize: 14, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 3),
                 const Text(
-                  'Every transfer is signed on your device and settles on your '
-                  'BMONI smart wallet. Check the receipt — reference numbers match '
-                  'your activity history.',
+                  'Every transfer is signed on your device and settles on the '
+                  'Stellar network. Check the receipt — the reference matches '
+                  'your activity history and the on-chain transaction.',
                   style: TextStyle(color: PfColors.onNavyMuted, fontSize: 13, height: 1.45),
                 ),
                 const SizedBox(height: 12),
-                const Text('Why is my verification pending?', style: TextStyle(color: PfColors.onNavy, fontSize: 14, fontWeight: FontWeight.w600)),
+                const Text('Why is verification unavailable?', style: TextStyle(color: PfColors.onNavy, fontSize: 14, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 3),
                 const Text(
-                  'Rail status comes from live onboarding state. NGN needs your '
-                  'BVN; USD runs a real Sumsub identity check with camera captures.',
+                  'Identity verification is not implemented yet — no provider '
+                  'is plugged in, so the app cannot and will not claim anyone '
+                  'is verified. See docs/fiat-kyc-gap.md for the plan.',
                   style: TextStyle(color: PfColors.onNavyMuted, fontSize: 13, height: 1.45),
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  'Still stuck? Your nearest PayFlex agent can cash you in and out, '
-                  'and raise issues on your behalf.',
+                  'Stuck? There is no agent network right now (it needs a fiat '
+                  'rail), but every on-chain payment is independently verifiable '
+                  'on the Stellar network.',
                   style: TextStyle(color: PfColors.onNavyFaint, fontSize: 12.5, height: 1.45),
                 ),
                 const SizedBox(height: 18),

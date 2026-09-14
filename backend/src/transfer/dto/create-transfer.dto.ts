@@ -1,20 +1,18 @@
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
 
 /**
- * Exactly one of toBmoniUserId / toAddress / toPayTag must be set — the
- * controller validates that (a class-validator XOR-of-three constraint
- * would be more machinery than it's worth here) and resolves toPayTag to
- * a bmoniUserId before ever reaching TransferService, which stays
- * PayTag-agnostic per the "each mode only resolves who/how much" rule.
+ * Exactly one of toPublicKey / toPayTag must be set — the controller
+ * validates that and resolves toPayTag to a public key before reaching
+ * TransferService. There is no server-side "create transfer" step anymore:
+ * the app builds, signs, and submits the payment to Horizon itself, then
+ * records it via POST /users/:id/transfers/record where the backend
+ * verifies the transaction on-chain before storing it.
  */
 export class CreateTransferDto {
   @IsOptional()
   @IsString()
-  toBmoniUserId?: string;
-
-  @IsOptional()
-  @IsString()
-  toAddress?: string;
+  @Matches(/^G[A-Z2-7]{55}$/, { message: 'toPublicKey must be an Ed25519 account strkey.' })
+  toPublicKey?: string;
 
   @IsOptional()
   @IsString()
@@ -25,9 +23,14 @@ export class CreateTransferDto {
   @IsNotEmpty()
   amount!: string;
 
+  /** "XLM" or an issued asset code (issued assets also need assetIssuer). */
   @IsString()
   @IsNotEmpty()
-  currency!: string;
+  assetCode!: string;
+
+  @IsOptional()
+  @IsString()
+  assetIssuer?: string;
 
   @IsOptional()
   @IsString()

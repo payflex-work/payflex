@@ -8,14 +8,12 @@ export interface StellarConfig {
 }
 
 /**
- * Config for PayFlex's Stellar rail — a second, optional payment network
- * that sits ALONGSIDE BMONI (see the root README), never routed
- * through it. Defaults to testnet; mainnet requires an explicit env flag
- * since it involves real, irreversible funds — this mirrors BMONI_ENV's
- * sandbox-vs-production split in bmoni.config.ts, but the stakes of
- * flipping this one by accident are higher (BMONI's sandbox/production
- * split still goes through a regulated custodian; Stellar mainnet is
- * unmediated on-chain value with no recovery path for a mistake).
+ * Config for PayFlex's Stellar network — the ONLY payment/settlement rail.
+ * Defaults to testnet; mainnet requires an explicit env flag since it
+ * involves real, irreversible funds. There is no custodian between the user
+ * and the network in this architecture: every payment is signed on the
+ * user's device and submitted by them, so the stakes of flipping this flag
+ * by accident are high (unmediated on-chain value, no recovery path).
  */
 export default registerAs('stellar', (): StellarConfig => {
   const network = (process.env.STELLAR_NETWORK ?? 'testnet') as 'testnet' | 'mainnet';

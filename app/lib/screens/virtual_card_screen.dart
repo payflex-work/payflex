@@ -3,13 +3,12 @@ import '../theme/payflex_tokens.dart';
 import '../theme/payflex_theme.dart';
 import '../widgets/pf_states.dart';
 
-/// Honest "not built" screen, matching StubRailsScreen's pattern. BMONI's
-/// API has no card-issuance primitive at all, and there is no processor
-/// integration (Stripe Issuing, Marqeta, or similar) anywhere in this
-/// codebase — a real virtual card needs both a product decision and a
-/// processor partnership before anything here can be more than this.
-/// Never render a fake card number/CVV/expiry: that would look like a
-/// real financial instrument backed by nothing.
+/// Honest "paused" screen. Stellar has no card-issuance capability, and
+/// there is no processor integration (Stripe Issuing, Marqeta, or
+/// similar) anywhere in this codebase — a real virtual card needs both a
+/// product decision and a processor partnership before anything here can
+/// be more than this. Never render a fake card number/CVV/expiry: that
+/// would look like a real financial instrument backed by nothing.
 class VirtualCardScreen extends StatelessWidget {
   const VirtualCardScreen({super.key});
 

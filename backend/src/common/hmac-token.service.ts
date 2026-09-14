@@ -4,10 +4,9 @@ import { createHmac, timingSafeEqual } from 'crypto';
 
 /**
  * Generic short-lived, HMAC-signed opaque token — tamper-evidence for
- * anything embedded in a QR code or link, nothing to do with BMONI's own
- * signing. Originally lived inside QrPayService; pulled out in Phase 5
- * once split-bill QR codes and claimable-link tokens needed the exact
- * same encode/verify/expiry mechanics.
+ * anything embedded in a QR code or link. Originally lived inside
+ * QrPayService; pulled out in Phase 5 once split-bill QR codes and
+ * send-via-link tokens needed the exact same encode/verify/expiry mechanics.
  */
 @Injectable()
 export class HmacTokenService {
@@ -23,12 +22,12 @@ export class HmacTokenService {
     }
   }
 
-  sign<T extends { expiresAt: string }>(payload: T): string {
+  sign<T extends object>(payload: T): string {
     const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
     return `${body}.${this.hmac(body)}`;
   }
 
-  verify<T extends { expiresAt: string }>(token: string): T {
+  verify<T extends object>(token: string): T {
     const [body, sig] = token.split('.');
     if (!body || !sig) throw new BadRequestException('Malformed token.');
 
@@ -39,8 +38,8 @@ export class HmacTokenService {
       throw new BadRequestException('Invalid token signature.');
     }
 
-    const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as T;
-    if (new Date(payload.expiresAt).getTime() < Date.now()) {
+    const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as T & { expiresAt?: string };
+    if (payload.expiresAt && new Date(payload.expiresAt).getTime() < Date.now()) {
       throw new BadRequestException('This token has expired.');
     }
     return payload;

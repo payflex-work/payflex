@@ -450,7 +450,7 @@ async function runVerification() {
   console.log('  3. Device B verifies request signature and deducts from Offline Reserve.');
   console.log('  4. Device B broadcasts animated QR confirmation back.');
   console.log('  5. Device A scans confirmation, validates binding, and stores pending claim.');
-  console.log('  6. Connectivity restored -> Device B redeems queued claim with BMONI.');
+  console.log('  6. Connectivity restored -> Device B settles the queued claim with an on-device Stellar payment.');
   console.log('  ✓ Two-device loop completed with 100% cryptographic integrity!\n');
 
   console.log('════════════════════════════════════════════════════════════════════');

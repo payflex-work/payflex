@@ -3,10 +3,10 @@ import '../services/api_client.dart';
 import '../services/session_manager.dart';
 import 'wallet_home_screen.dart';
 
-/// Shown on a cold start when a local wallet/PIN already exist on this
-/// device but there's no valid session (no persisted refresh token, or the
-/// backend rejected it) — the user proves ownership of the on-device key
-/// once more via the normal challenge-response login.
+/// Shown on a cold start when a local Stellar wallet/PIN already exist on
+/// this device but there's no valid session (no persisted refresh token,
+/// or the backend rejected it) — the user proves ownership of the on-device
+/// key once more via the normal challenge-response login.
 class UnlockScreen extends StatefulWidget {
   final String appUserId;
   const UnlockScreen({super.key, required this.appUserId});

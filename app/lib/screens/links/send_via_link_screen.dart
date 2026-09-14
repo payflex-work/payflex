@@ -1,27 +1,33 @@
 import 'package:flutter/material.dart';
 import '../../models/app_user.dart';
 import '../../models/claimable_link.dart';
-import '../../models/transfer.dart';
 import '../../services/api_client.dart';
 import '../../services/transfer_flow.dart';
+import '../../services/wallet_service.dart';
+import '../../stellar/stellar_models.dart';
 import '../../theme/payflex_tokens.dart';
 import '../../theme/payflex_theme.dart';
+import '../../utils/format.dart';
 import '../../utils/money.dart';
 import '../../widgets/pf_balance_card.dart';
 import '../../widgets/pf_buttons.dart';
 import '../../widgets/pf_flow.dart';
 import '../../widgets/pf_states.dart';
-import '../transfer/send_money_screen.dart' show humanTransferStatus, transferTone;
+import '../../widgets/pin_prompt.dart';
 
-/// Build brief §4.4 / §3 — send-via-link. If the recipient already has a
-/// bmoniUserId this degrades to a normal transfer; if not, funds route
-/// through PayFlex's own treasury as an escrow holder.
+/// Send-via-link — NON-CUSTODIAL on native Stellar claimable balances.
 ///
-/// *** This is a real liability/compliance surface, not just a feature —
-/// see the root README (Send via link) and the ClaimableLink model's doc comment in
-/// backend/prisma/schema.prisma before assuming "it's just like QR Pay."
-/// While a link sits unclaimed, PayFlex is holding a real customer's
-/// funds in its own custodial account. ***
+/// Flow (mirrors backend/src/links/links.service.ts):
+///   1. Create the link record → get the share token.
+///   2. The app builds an on-chain CREATE_CLAIMABLE_BALANCE with the
+///      sender as sole claimant (reclaimable) — funds are escrowed BY THE
+///      CHAIN, never in a PayFlex-owned account.
+///   3. The backend verifies the claimable balance on Horizon → FUNDED.
+///   4. The recipient claims on-chain with their own signature and the
+///      backend verifies the claim before marking CLAIMED.
+///
+/// Funds are escrowed by the chain, never by PayFlex — there is no
+/// treasury account anywhere in this architecture.
 class SendViaLinkScreen extends StatefulWidget {
   final AppUser user;
   const SendViaLinkScreen({super.key, required this.user});
@@ -82,17 +88,15 @@ class _SendTab extends StatefulWidget {
 
 class _SendTabState extends State<_SendTab> {
   final _api = ApiClient();
-  final _recipientController = TextEditingController();
   final _amountController = TextEditingController();
-  String _currency = 'NGN';
+  String _assetCode = 'XLM';
   bool _busy = false;
   String? _error;
-  String? _claimToken;
+  String? _shareToken;
   String? _status;
 
   @override
   void dispose() {
-    _recipientController.dispose();
     _amountController.dispose();
     super.dispose();
   }
@@ -101,52 +105,62 @@ class _SendTabState extends State<_SendTab> {
     setState(() {
       _busy = true;
       _error = null;
-      _claimToken = null;
+      _shareToken = null;
       _status = null;
     });
     try {
-      final result = await _api.sendViaLink(
+      // 1. Create the link record and get the share token.
+      final link = await _api.sendViaLink(
         widget.user.id,
-        toBmoniUserId: _recipientController.text.isEmpty ? null : _recipientController.text,
-        amount: _amountController.text,
-        currency: _currency,
+        amount: _amountController.text.trim(),
+        assetCode: _assetCode,
       );
+
+      // 2. Create the on-chain claimable balance — the sender is the sole
+      //    claimant until the recipient claims, so nothing is ever held by
+      //    PayFlex. The PIN prompt happens inside the shared flow.
       if (!mounted) return;
-      if (result.type == 'DIRECT_TRANSFER') {
-        final signed = await signAndSubmitTransfer(
-          context,
-          _api,
-          widget.user.id,
-          result.proposal!.id,
-        );
-        if (signed == null) {
-          setState(() => _status = 'Cancelled — nothing was submitted.');
-          return;
-        }
-        await _celebrateSend(
-          signed,
-          headline: 'Sent',
-          caption: 'Sent directly — the recipient already has an account',
-        );
-      } else {
-        final signed = await signAndSubmitTransfer(
-          context,
-          _api,
-          widget.user.id,
-          result.escrowProposal!.id,
-        );
-        if (signed == null) {
-          setState(() => _status = 'Cancelled — nothing was submitted.');
-          return;
-        }
-        setState(() => _claimToken = result.claimToken);
-        await _celebrateSend(
-          signed,
-          headline: 'Escrowed',
-          caption: 'Held safely by PayFlex until the recipient claims it',
-          method: 'Payment link · escrow',
-        );
+      final pin = await promptForPin(context);
+      if (pin == null || pin.isEmpty) {
+        setState(() => _status = 'Cancelled — the on-chain escrow was not created.');
+        return;
       }
+      final stellar = await _api.stellarClient();
+      final senderKey = (await WalletService.currentAddress())!;
+      final cb = await stellar.createClaimableBalance(
+        claimantPublicKeys: [senderKey],
+        assetCode: _assetCode,
+        amount: _amountController.text.trim(),
+        pin: pin,
+      );
+      if (!cb.success) {
+        setState(() => _error = cb.errorMessage ?? 'The Stellar network rejected the escrow.');
+        return;
+      }
+
+      // 3. Look up the created claimable balance and register its id with
+      //    the backend, which verifies it on Horizon before marking the
+      //    link FUNDED. (The CB id is read back from the sender's
+      //      claimable balances; the tx hash alone is not the CB id.)
+      final cbId = await stellar.findCreatedClaimableBalanceId(
+        txHash: cb.transactionHash!,
+        requesterPublicKey: senderKey,
+      );
+      if (cbId == null) {
+        setState(() => _error =
+            'Escrow created (tx ${shortRef(cb.transactionHash ?? '')}) but the claimable balance '
+                'id could not be read back yet — retry in a moment so the link is marked funded.');
+        return;
+      }
+      await _api.registerClaimableBalance(widget.user.id, link.linkId, cbId);
+
+      setState(() {
+        _shareToken = link.shareToken;
+        _status =
+            'Escrow verified on-chain. Share the token below — funds sit in a '
+            'claimable balance YOU can reclaim, never in a PayFlex account.';
+      });
+      await _celebrateSend(cb);
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -154,23 +168,16 @@ class _SendTabState extends State<_SendTab> {
     }
   }
 
-  Future<void> _celebrateSend(
-    Proposal signed, {
-    required String headline,
-    String? caption,
-    String? method,
-  }) {
+  Future<void> _celebrateSend(StellarPaymentResult result) {
     return showPfConfirmation(
       context,
-      outcome: PfFlowOutcome(
-        headline: headline,
-        amount: signed.amount,
-        currency: signed.currency,
-        caption: caption,
-        reference: signed.id,
-        statusLabel: humanTransferStatus(signed.status),
-        statusTone: transferTone(signed.status),
-        methodLabel: method ?? 'Send via link',
+      outcome: outcomeForPayment(
+        result,
+        headline: 'Link funded on-chain',
+        amount: _amountController.text.trim(),
+        assetCode: _assetCode,
+        caption: 'Claimable balance · reclaimable by you until claimed',
+        methodLabel: 'Send via link',
       ),
     );
   }
@@ -196,9 +203,9 @@ class _SendTabState extends State<_SendTab> {
                   SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'If the recipient doesn\u2019t have a PayFlex account yet, '
-                      'PayFlex holds your funds in its own account until they sign '
-                      'up and claim them — not a personal escrow just for you.',
+                      'Your funds are escrowed ON-CHAIN in a Stellar claimable '
+                      'balance — never in a PayFlex account. You can reclaim '
+                      'them yourself until the recipient claims.',
                       style: TextStyle(
                         color: PfColors.onNavyMuted,
                         fontSize: 12,
@@ -210,14 +217,6 @@ class _SendTabState extends State<_SendTab> {
               ),
             ),
             const SizedBox(height: 18),
-            TextField(
-              controller: _recipientController,
-              decoration: const InputDecoration(
-                labelText: 'Recipient user ID',
-                hintText: 'Leave blank if they have no account yet',
-              ),
-            ),
-            const SizedBox(height: 14),
             Row(
               children: [
                 Expanded(
@@ -231,13 +230,12 @@ class _SendTabState extends State<_SendTab> {
                 SizedBox(
                   width: 116,
                   child: DropdownButtonFormField<String>(
-                    initialValue: _currency,
-                    decoration: const InputDecoration(labelText: 'Currency'),
+                    initialValue: _assetCode,
+                    decoration: const InputDecoration(labelText: 'Asset'),
                     items: const [
-                      DropdownMenuItem(value: 'NGN', child: Text('NGN')),
-                      DropdownMenuItem(value: 'USD', child: Text('USD')),
+                      DropdownMenuItem(value: 'XLM', child: Text('XLM')),
                     ],
-                    onChanged: (v) => setState(() => _currency = v!),
+                    onChanged: (v) => setState(() => _assetCode = v!),
                   ),
                 ),
               ],
@@ -259,7 +257,7 @@ class _SendTabState extends State<_SendTab> {
               ),
               const SizedBox(height: 14),
             ],
-            if (_claimToken != null) ...[
+            if (_shareToken != null) ...[
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
@@ -285,7 +283,7 @@ class _SendTabState extends State<_SendTab> {
                     ),
                     const SizedBox(height: 8),
                     SelectableText(
-                      _claimToken!,
+                      _shareToken!,
                       style: const TextStyle(
                         color: PfColors.ink,
                         fontSize: 13,
@@ -298,7 +296,7 @@ class _SendTabState extends State<_SendTab> {
               const SizedBox(height: 14),
             ],
             PfPrimaryButton(
-              label: 'Send',
+              label: 'Fund link on-chain',
               icon: Icons.link_rounded,
               busy: _busy,
               onPressed: _busy ? null : _send,
@@ -340,7 +338,7 @@ class _ClaimTabState extends State<_ClaimTab> {
       _preview = null;
     });
     try {
-      _preview = await _api.previewClaim(_tokenController.text);
+      _preview = await _api.previewLink(_tokenController.text.trim());
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -354,12 +352,36 @@ class _ClaimTabState extends State<_ClaimTab> {
       _error = null;
     });
     try {
-      await _api.claimLink(widget.user.id, _tokenController.text);
+      // The claim itself is an on-chain claimClaimableBalance operation
+      // signed by the recipient (this device's key).
+      final pin = await promptForPin(context);
+      if (pin == null || pin.isEmpty) {
+        setState(() => _status = 'Cancelled — nothing was claimed.');
+        return;
+      }
+      final stellar = await _api.stellarClient();
+      final claimTx = await stellar.claimClaimableBalance(
+        claimableBalanceId: _preview!.claimableBalanceId!,
+        pin: pin,
+      );
+      if (!claimTx.success) {
+        setState(() => _error = claimTx.errorMessage ?? 'The on-chain claim failed.');
+        return;
+      }
+
+      // Report the claim (with the tx hash) so the backend can verify it.
+      final me = await WalletService.currentAddress();
+      await _api.claimLink(
+        widget.user.id,
+        _preview!.linkId,
+        claimantPublicKey: me!,
+        claimTxHash: claimTx.transactionHash!,
+      );
       if (!mounted) return;
       await showPfSimpleSuccess(
         context,
         title: 'Claimed',
-        message: 'Funds released from PayFlex escrow to your wallet.',
+        message: 'Funds moved from the claimable balance to your account — verified on-chain.',
         actionLabel: 'Done',
       );
       if (mounted) {
@@ -391,7 +413,7 @@ class _ClaimTabState extends State<_ClaimTab> {
             const SizedBox(height: 4),
             const Text(
               'Paste the token you received — preview what\u2019s waiting, then '
-              'claim it into a matching-currency wallet.',
+              'claim it on-chain into your account.',
               style: TextStyle(color: PfColors.inkMuted, fontSize: 13.5, height: 1.45),
             ),
             const SizedBox(height: 18),
@@ -417,13 +439,13 @@ class _ClaimTabState extends State<_ClaimTab> {
                       children: [
                         Expanded(
                           child: Text(
-                            formatMoney(p.amount, p.currency),
+                            formatMoney(p.amount, p.assetCode),
                             style: PfMoneyType.large.copyWith(color: PfColors.ink),
                           ),
                         ),
                         PfStatusChip(
-                          label: p.status == 'ESCROWED' ? 'Waiting for you' : p.status,
-                          tone: p.status == 'ESCROWED' ? PfTone.info : PfTone.success,
+                          label: p.status == 'FUNDED' ? 'Waiting for you' : p.status,
+                          tone: p.status == 'FUNDED' ? PfTone.info : PfTone.success,
                         ),
                       ],
                     ),
@@ -432,6 +454,13 @@ class _ClaimTabState extends State<_ClaimTab> {
                       'from ${p.senderName}',
                       style: const TextStyle(color: PfColors.inkMuted, fontSize: 13.5),
                     ),
+                    if (!p.claimableBalanceExists) ...[
+                      const SizedBox(height: 8),
+                      const Text(
+                        'The on-chain escrow for this link has not been created yet.',
+                        style: TextStyle(color: PfColors.warn, fontSize: 12.5),
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     Row(
                       children: [
@@ -451,9 +480,9 @@ class _ClaimTabState extends State<_ClaimTab> {
                       ],
                     ),
                     const SizedBox(height: 14),
-                    if (p.status == 'ESCROWED')
+                    if (p.status == 'FUNDED' && p.claimableBalanceExists)
                       PfPrimaryButton(
-                        label: 'Claim into my wallet',
+                        label: 'Claim on-chain',
                         busy: _claiming,
                         onPressed: _claiming ? null : _claim,
                       )

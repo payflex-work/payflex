@@ -1,10 +1,13 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
-import { SplitBillService } from './split-bill.service';
-import { CreateSplitBillDto } from './dto/create-split-bill.dto';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { SplitBillService, CreateSplitBillDto } from './split-bill.service';
+import { HmacTokenService } from '../common/hmac-token.service';
 
 @Controller()
 export class SplitBillController {
-  constructor(private readonly splitBills: SplitBillService) {}
+  constructor(
+    private readonly splitBills: SplitBillService,
+    private readonly hmacTokens: HmacTokenService,
+  ) {}
 
   @Post('users/:id/split-bills')
   create(@Param('id') id: string, @Body() dto: CreateSplitBillDto) {
@@ -16,18 +19,18 @@ export class SplitBillController {
     return this.splitBills.listForUser(id);
   }
 
-  @Get('split-bills/qr/:token')
-  getByToken(@Param('token') token: string) {
-    return this.splitBills.getByToken(token);
+  @Get('users/:id/split-bills/:splitBillId')
+  getDetail(@Param('id') id: string, @Param('splitBillId') splitBillId: string) {
+    return this.splitBills.getDetail(id, splitBillId);
   }
 
-  @Get('split-bills/:splitBillId')
-  getDetail(@Param('splitBillId') splitBillId: string) {
-    return this.splitBills.getDetail(splitBillId);
-  }
-
-  @Post('users/:id/split-bills/:splitBillId/pay')
-  pay(@Param('id') id: string, @Param('splitBillId') splitBillId: string) {
-    return this.splitBills.pay(id, splitBillId);
+  /**
+   * Scanning a split-bill QR resolves to this — the token carries the bill
+   * id (HMAC-signed); the scanning contributor sees their own share.
+   */
+  @Get('split-bills/qr')
+  getByToken(@Query('token') token: string) {
+    const payload = this.hmacTokens.verify<{ billId: string }>(token);
+    return this.splitBills.getDetail(payload.billId, payload.billId);
   }
 }

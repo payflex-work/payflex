@@ -1,56 +1,35 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { StrKey } from '@stellar/stellar-sdk';
 import { PrismaService } from '../prisma/prisma.service';
-import { BmoniClientService } from '../bmoni/bmoni-client.service';
-import { BmoniApiError } from '../bmoni/bmoni.errors';
 import { CreateUserDto } from './dto/create-user.dto';
 import { AppUser } from '@prisma/client';
 
+/**
+ * Local account directory for the Stellar-only architecture. Creating a
+ * PayFlex account is a purely local act — the user's real account is their
+ * non-custodial Stellar keypair generated ON THEIR DEVICE; this backend
+ * never sees secret key material and cannot create one for them. The public
+ * key is registered (PATCH /users/:id/stellar-public-key) once the app has
+ * generated it, and activation (on-chain funding) is verified against
+ * Horizon by OnboardingService.
+ */
 @Injectable()
 export class UsersService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly bmoni: BmoniClientService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  /**
-   * The one and only place a BMONI user is created from this app. Always
-   * checks local storage first — per the brief, recreating a BMONI user
-   * on relaunch forks wallet history, so an existing local row always
-   * wins over calling POST /v1/users again.
-   */
   async getOrCreate(dto: CreateUserDto): Promise<AppUser> {
     const existing = await this.prisma.appUser.findUnique({
       where: { phoneNumber: dto.phoneNumber },
     });
     if (existing) return existing;
-
-    try {
-      const bmoniUser = await this.bmoni.createUser(dto);
-      return await this.prisma.appUser.create({
-        data: {
-          bmoniUserId: bmoniUser.bmoniUserId,
-          firstName: bmoniUser.firstName,
-          lastName: bmoniUser.lastName,
-          email: bmoniUser.email,
-          phoneNumber: bmoniUser.phoneNumber,
-        },
-      });
-    } catch (err) {
-      if (err instanceof BmoniApiError && err.isConflict) {
-        // BMONI enforces phoneNumber uniqueness across the whole sandbox
-        // partner key, not just our own users — this can legitimately
-        // fire even for a phone number we've never created locally (e.g.
-        // in a shared sandbox where another team already registered it).
-        // Surface a distinct, actionable error rather than a generic 500.
-        throw new ConflictException(
-          `A BMONI user already exists for ${dto.phoneNumber}. This phone cannot be ` +
-            `re-registered under a different app account; if this is unexpected, ` +
-            `confirm you're not reusing a persona phone number someone else already ` +
-            `claimed in a shared sandbox.`,
-        );
-      }
-      throw err;
-    }
+    return this.prisma.appUser.create({
+      data: {
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        email: dto.email,
+        phoneNumber: dto.phoneNumber,
+      },
+    });
   }
 
   async findById(id: string): Promise<AppUser> {
@@ -60,19 +39,51 @@ export class UsersService {
   }
 
   /**
-   * Set-once. Changing a user's owner address after the fact would mean
-   * silently swapping which private key controls their BMONI wallets —
-   * this must never happen automatically or via a re-used bootstrap
-   * token; see UsersController.create's doc comment for the related
-   * account-hijack concern this closes off.
+   * Registers the public half of the user's on-device Stellar keypair.
+   * Strictly validated as an Ed25519 account strkey (G...) — a typo'd or
+   * wrong-type key here would brick logins and payments for this account,
+   * so it is rejected at the door, not at first use.
    */
-  async setOwnerAddress(id: string, ownerAddress: string): Promise<AppUser> {
+  async setStellarPublicKey(id: string, stellarPublicKey: string): Promise<AppUser> {
+    this.assertValidEd25519PublicKey(stellarPublicKey);
+
+    const clash = await this.prisma.appUser.findUnique({ where: { stellarPublicKey } });
+    if (clash && clash.id !== id) {
+      throw new BadRequestException('This Stellar public key is already registered to another account.');
+    }
+
     const user = await this.findById(id);
-    if (user.ownerAddress) {
+    if (user.stellarPublicKey && user.stellarPublicKey !== stellarPublicKey) {
       throw new BadRequestException(
-        `User ${id} already has an owner address registered — it cannot be changed.`,
+        'A Stellar public key is already registered for this account and keys are ' +
+          'immutable — rotating keys is not supported because past payments and ' +
+          'Safebox/Soroban ownership reference the original key. Create a new account instead.',
       );
     }
-    return this.prisma.appUser.update({ where: { id }, data: { ownerAddress } });
+    return this.prisma.appUser.update({
+      where: { id },
+      data: { stellarPublicKey },
+    });
+  }
+
+  async markStellarAccountActivated(id: string): Promise<AppUser> {
+    await this.findById(id);
+    return this.prisma.appUser.update({
+      where: { id },
+      data: { stellarAccountActivated: true },
+    });
+  }
+
+  private assertValidEd25519PublicKey(publicKey: string): void {
+    if (typeof publicKey !== 'string' || !publicKey.startsWith('G')) {
+      throw new BadRequestException('stellarPublicKey must be an Ed25519 account strkey starting with "G".');
+    }
+    try {
+      if (!StrKey.isValidEd25519PublicKey(publicKey)) {
+        throw new Error('invalid checksum or length');
+      }
+    } catch {
+      throw new BadRequestException('stellarPublicKey is not a valid Ed25519 account strkey.');
+    }
   }
 }

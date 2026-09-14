@@ -8,9 +8,9 @@ import 'create_user_screen.dart';
 
 /// ──────────────────────────────────────────────────────────────────────────
 /// Intro carousel — the first thing a brand-new user sees, before account
-/// creation. Three pages, each anchored by the approved brand poster
-/// (app icon, wordmark, "MORE CONTROL. MORE POSSIBILITIES.", the four
-/// pillars):
+/// creation. Three pages, each anchored by the approved brand poster:
+/// page 1 leads with the product's core selling point (offline payments),
+/// not a generic welcome:
 ///   1. The poster itself — the brand moment, verbatim.
 ///   2. What PayFlex does — the four pillars, in the app's own voice.
 ///   3. How the money is kept safe — the on-device key + PIN promise.
@@ -214,19 +214,21 @@ class _IntroPage {
   });
 
   static const all = <_IntroPage>[
-    // 1 — the brand moment, verbatim from the approved art.
+    // 1 — THE differentiator, first words on screen. A generic welcome
+    // could belong to any wallet; this is the one thing only PayFlex says.
     _IntroPage(
-      title: 'More control. More possibilities.',
+      title: 'The wallet that keeps working when your network doesn\'t',
       body:
-          'PayFlex is your wallet, savings and everyday money moves in one '
-          'app — built to move the way you do.',
+          'Pay even with no signal. Payments hand over screen-to-screen, '
+          'signed on your device, and settle on Stellar the moment you\'re '
+          'back online.',
     ),
-    // 2 — the four pillars, in app voice (mirrors the poster strip).
+    // 2 — everything else the app does, in app voice.
     _IntroPage(
-      title: 'Send, save, spend, grow — together',
+      title: 'Send, save, split, grow — together',
       body:
-          'Send money instantly, stash savings toward goals, spend freely '
-          'with your card, and grow with agents and community savings.',
+          'Send money instantly, save together in Safebox groups, split '
+          'bills, and set up recurring payments — all in one place.',
       blurPoster: true,
     ),
     // 3 — the security promise (matches Settings' security posture).

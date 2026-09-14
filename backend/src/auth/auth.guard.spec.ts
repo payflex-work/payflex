@@ -70,17 +70,20 @@ describe('AuthGuard', () => {
   it('accepts a valid access token on a route with no :id param', () => {
     const tokens = buildTokens();
     const guard = buildGuard(tokens, false);
-    const accessToken = tokens.signAccessToken('user-1', 'bmoni-1');
+    const accessToken = tokens.signAccessToken('user-1', 'GABCDEFJKMNPRSTUVWXYZ23456789');
     const { context, request } = buildContext({ authorization: `Bearer ${accessToken}` });
 
     expect(guard.canActivate(context)).toBe(true);
-    expect(request.user).toEqual({ appUserId: 'user-1', bmoniUserId: 'bmoni-1' });
+    expect(request.user).toEqual({
+      appUserId: 'user-1',
+      stellarPublicKey: 'GABCDEFJKMNPRSTUVWXYZ23456789',
+    });
   });
 
   it('accepts a valid access token when :id matches the token subject', () => {
     const tokens = buildTokens();
     const guard = buildGuard(tokens, false);
-    const accessToken = tokens.signAccessToken('user-1', 'bmoni-1');
+    const accessToken = tokens.signAccessToken('user-1', 'GABCDEFJKMNPRSTUVWXYZ23456789');
     const { context } = buildContext({
       authorization: `Bearer ${accessToken}`,
       params: { id: 'user-1' },
@@ -92,7 +95,7 @@ describe('AuthGuard', () => {
   it("rejects a valid access token when :id belongs to a different user (cross-user ownership)", () => {
     const tokens = buildTokens();
     const guard = buildGuard(tokens, false);
-    const accessToken = tokens.signAccessToken('user-1', 'bmoni-1');
+    const accessToken = tokens.signAccessToken('user-1', 'GABCDEFJKMNPRSTUVWXYZ23456789');
     const { context } = buildContext({
       authorization: `Bearer ${accessToken}`,
       params: { id: 'user-2' },
@@ -111,14 +114,14 @@ describe('AuthGuard', () => {
   });
 
   describe('bootstrap-scoped tokens', () => {
-    it('accepts a bootstrap token on exactly PATCH /users/:id/owner-address for its own subject', () => {
+    it('accepts a bootstrap token on exactly PATCH /users/:id/stellar-public-key for its own subject', () => {
       const tokens = buildTokens();
       const guard = buildGuard(tokens, false);
       const bootstrapToken = tokens.signBootstrapToken('user-1');
       const { context, request } = buildContext({
         authorization: `Bearer ${bootstrapToken}`,
         method: 'PATCH',
-        routePath: '/users/:id/owner-address',
+        routePath: '/users/:id/stellar-public-key',
         params: { id: 'user-1' },
       });
 
@@ -140,14 +143,14 @@ describe('AuthGuard', () => {
       expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
     });
 
-    it('rejects a bootstrap token on the owner-address route for a different user', () => {
+    it('rejects a bootstrap token on the stellar-public-key route for a different user', () => {
       const tokens = buildTokens();
       const guard = buildGuard(tokens, false);
       const bootstrapToken = tokens.signBootstrapToken('user-1');
       const { context } = buildContext({
         authorization: `Bearer ${bootstrapToken}`,
         method: 'PATCH',
-        routePath: '/users/:id/owner-address',
+        routePath: '/users/:id/stellar-public-key',
         params: { id: 'user-2' },
       });
 

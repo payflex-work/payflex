@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
 import { StandingPlansService } from './standing-plans.service';
-import { CreateStandingPlanDto } from './dto/create-standing-plan.dto';
+import { CreateStandingPlanDto } from './standing-plans.service';
 
 @Controller('users/:id/standing-plans')
 export class StandingPlansController {
@@ -31,12 +31,16 @@ export class StandingPlansController {
   }
 
   /**
-   * Returns the same Proposal shape TransferController's endpoints do —
-   * the app signs/submits it via the normal
-   * /transfers/:proposalId/sign-payload and /sign routes.
+   * The app reports this due payment was signed and submitted on-chain.
+   * Requires a verified TransferRecord referencing this payment
+   * (kind=STANDING_PLAN, standingPlanId set) — see StandingPlansService.
    */
-  @Post('payments/:paymentId/pay')
-  pay(@Param('id') id: string, @Param('paymentId') paymentId: string) {
-    return this.plans.pay(id, paymentId);
+  @Post('payments/:paymentId/record')
+  recordPayment(
+    @Param('id') id: string,
+    @Param('paymentId') paymentId: string,
+    @Body('stellarTxHash') stellarTxHash: string,
+  ) {
+    return this.plans.recordPayment(id, paymentId, stellarTxHash);
   }
 }

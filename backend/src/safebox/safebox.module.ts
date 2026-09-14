@@ -1,13 +1,12 @@
 import { Module } from '@nestjs/common';
 import { SafeboxController } from './safebox.controller';
-import { SafeboxService } from './safebox.service';
-import { TransferModule } from '../transfer/transfer.module';
-import { TreasuryModule } from '../treasury/treasury.module';
+import { SafeboxSorobanService } from './safebox-soroban.service';
+import { UsersModule } from '../users/users.module';
 
 @Module({
-  imports: [TransferModule, TreasuryModule],
+  imports: [UsersModule],
   controllers: [SafeboxController],
-  providers: [SafeboxService],
-  exports: [SafeboxService],
+  providers: [SafeboxSorobanService],
+  exports: [SafeboxSorobanService],
 })
 export class SafeboxModule {}

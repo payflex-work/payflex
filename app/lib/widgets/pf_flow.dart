@@ -1,12 +1,33 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme/payflex_tokens.dart';
 import '../theme/payflex_theme.dart';
 import '../utils/format.dart';
 import '../utils/money.dart';
+import '../utils/stellar_tx.dart';
 import 'pf_balance_card.dart';
 import 'pf_buttons.dart';
 import 'pf_mark.dart';
 import 'pf_states.dart';
+
+/// The tactile payoff for a completed money flow, fired once as the
+/// confirmation mark lands. Haptics carry the delight (no visual glow,
+/// per the design brief) and degrade silently on platforms that refuse
+/// them (web, unsupported API levels) — wrapped in try/catch for that
+/// reason. Sound is deliberately omitted: there is no clean asset-free
+/// system success-sound API on both platforms, and this polish pass
+/// refuses to ship bundled audio for a single moment.
+void _fireConfirmationPayoff() {
+  try {
+    HapticFeedback.heavyImpact();
+  } catch (_) {}
+}
+
+void _fireRevealTick() {
+  try {
+    HapticFeedback.lightImpact();
+  } catch (_) {}
+}
 
 /// Everything a completed money flow needs to render its payoff: the
 /// confirmation animation and the receipt. Built once, reused by every
@@ -67,6 +88,7 @@ class PfConfirmationScreen extends StatefulWidget {
 class _PfConfirmationScreenState extends State<PfConfirmationScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
+  bool _tickFired = false;
 
   @override
   void initState() {
@@ -75,6 +97,15 @@ class _PfConfirmationScreenState extends State<PfConfirmationScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1250),
     )..forward();
+    // The mark lands at t≈1.0 but the eye reads the payoff at the amount
+    // reveal (0.52–0.74 of the timeline) — fire the heavy haptic as the
+    // headline lands there, once.
+    _controller.addListener(() {
+      if (!_tickFired && _controller.value >= 0.55) {
+        _tickFired = true;
+        _fireConfirmationPayoff();
+      }
+    });
   }
 
   @override
@@ -133,11 +164,15 @@ class _PfConfirmationScreenState extends State<PfConfirmationScreen>
                           controller: _controller,
                           from: 0.52,
                           to: 0.74,
-                          child: Text(
-                            formatMoney(outcome.amount, outcome.currency),
-                            textAlign: TextAlign.center,
-                            style: PfMoneyType.large.copyWith(
-                              color: Colors.white,
+                          child: _RevealTick(
+                            controller: _controller,
+                            fireAt: 0.74,
+                            child: Text(
+                              formatMoney(outcome.amount, outcome.currency),
+                              textAlign: TextAlign.center,
+                              style: PfMoneyType.large.copyWith(
+                                color: Colors.white,
+                              ),
                             ),
                           ),
                         ),
@@ -205,6 +240,15 @@ class _PfConfirmationScreenState extends State<PfConfirmationScreen>
                             ),
                           ),
                         ),
+                        // The credibility layer: when the reference is a
+                        // real Stellar transaction hash, offer the public
+                        // explorer. Anyone technical in the room can verify
+                        // the payment is real — don't hide the rail.
+                        if (isStellarTxHash(outcome.reference))
+                          Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: _ExplorerChip(hash: outcome.reference),
+                          ),
                       ],
                     ),
                   ),
@@ -390,8 +434,10 @@ class PfReceiptScreen extends StatelessWidget {
                       const SizedBox(height: 4),
                       const _ReceiptRow(
                         label: 'Settlement',
-                        value: 'Signed on your device · BMONI smart wallet',
+                        value: 'Signed on your device · settled on Stellar',
                       ),
+                      if (isStellarTxHash(o.reference))
+                        _ExplorerReceiptRow(hash: o.reference),
                       const Divider(height: 24),
                       const Padding(
                         padding: EdgeInsets.only(bottom: 20),
@@ -419,10 +465,12 @@ class _ReceiptRow extends StatelessWidget {
   final String label;
   final String value;
   final bool selectable;
+  final VoidCallback? onTap;
   const _ReceiptRow({
     required this.label,
     required this.value,
     this.selectable = false,
+    this.onTap,
   });
 
   @override
@@ -433,6 +481,13 @@ class _ReceiptRow extends StatelessWidget {
       fontWeight: FontWeight.w600,
       height: 1.4,
     );
+    final valueWidget = selectable
+        ? SelectableText(value, style: textStyle)
+        : Text(value,
+            style: onTap != null
+                ? textStyle.copyWith(color: PfColors.royalBlue)
+                : textStyle,
+            textAlign: TextAlign.right);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 9),
       child: Row(
@@ -449,12 +504,119 @@ class _ReceiptRow extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: selectable
-                ? SelectableText(value, style: textStyle)
-                : Text(value, style: textStyle, textAlign: TextAlign.right),
+            child: onTap == null
+                ? valueWidget
+                : GestureDetector(onTap: onTap, child: valueWidget),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Small flat chip on the dark confirmation panel: opens the transaction
+/// on a public Stellar explorer. Never shown for non-chain references.
+/// Network (testnet vs mainnet) comes from the backend's config — cached
+/// once per app run after the first look-up.
+class _ExplorerChip extends StatefulWidget {
+  final String hash;
+  const _ExplorerChip({required this.hash});
+
+  @override
+  State<_ExplorerChip> createState() => _ExplorerChipState();
+}
+
+class _ExplorerChipState extends State<_ExplorerChip> {
+  bool? _testnet;
+
+  @override
+  void initState() {
+    super.initState();
+    resolveTestnet().then((t) {
+      if (mounted) setState(() => _testnet = t);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final testnet = _testnet;
+    final label = testnet == null
+        ? 'On the Stellar network · verify'
+        : testnet
+            ? 'On the Stellar testnet · verify'
+            : 'On the Stellar network · verify';
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(PfRadius.sm),
+        onTap: testnet == null
+            ? null
+            : () => openStellarExplorer(widget.hash, testnet: testnet),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: BoxDecoration(
+            color: PfColors.navyRaised2,
+            borderRadius: BorderRadius.circular(PfRadius.sm),
+            border: Border.all(color: PfColors.navyBorder),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.verified_outlined,
+                  color: PfColors.accentOnDark, size: 15),
+              const SizedBox(width: 7),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: PfColors.accentOnDark,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 4),
+              const Icon(Icons.open_in_new_rounded,
+                  color: PfColors.accentOnDark, size: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Receipt variant of the explorer link — light-surface row that opens
+/// the transaction on a public explorer.
+class _ExplorerReceiptRow extends StatefulWidget {
+  final String hash;
+  const _ExplorerReceiptRow({required this.hash});
+
+  @override
+  State<_ExplorerReceiptRow> createState() => _ExplorerReceiptRowState();
+}
+
+class _ExplorerReceiptRowState extends State<_ExplorerReceiptRow> {
+  bool? _testnet;
+
+  @override
+  void initState() {
+    super.initState();
+    resolveTestnet().then((t) {
+      if (mounted) setState(() => _testnet = t);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final testnet = _testnet;
+    return _ReceiptRow(
+      label: 'Stellar',
+      value: testnet == null
+          ? 'Transaction hash (verifiable on any explorer)'
+          : 'View on StellarExpert →',
+      selectable: false,
+      onTap: testnet == null
+          ? null
+          : () => openStellarExplorer(widget.hash, testnet: testnet),
     );
   }
 }
@@ -586,6 +748,48 @@ class _PfSuccessDialogState extends State<_PfSuccessDialog>
       ),
     );
   }
+}
+
+/// Fires one light haptic tick when the shared controller passes
+/// [fireAt] — the "numbers landed" beat after the heavy impact.
+class _RevealTick extends StatefulWidget {
+  final AnimationController controller;
+  final double fireAt;
+  final Widget child;
+  const _RevealTick({
+    required this.controller,
+    required this.fireAt,
+    required this.child,
+  });
+
+  @override
+  State<_RevealTick> createState() => _RevealTickState();
+}
+
+class _RevealTickState extends State<_RevealTick> {
+  bool _fired = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_check);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_check);
+    super.dispose();
+  }
+
+  void _check() {
+    if (!_fired && widget.controller.value >= widget.fireAt) {
+      _fired = true;
+      _fireRevealTick();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 /// Fade-and-rise reveal gated to an interval of the shared controller.

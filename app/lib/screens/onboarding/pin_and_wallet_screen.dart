@@ -3,28 +3,28 @@ import '../../models/app_user.dart';
 import '../../services/api_client.dart';
 import '../../services/session_manager.dart';
 import '../../services/wallet_service.dart';
+import '../../stellar/stellar_client.dart';
 import '../../theme/payflex_tokens.dart';
 import '../../theme/payflex_theme.dart';
-import '../../widgets/pf_balance_card.dart';
 import '../../widgets/pf_buttons.dart';
 import '../../widgets/pf_motion.dart';
+import '../../widgets/pf_balance_card.dart';
 import '../../widgets/pf_states.dart';
-import '../kyc/kyc_wizard_screen.dart';
+import '../wallet_home_screen.dart';
 
-/// Runs steps 2-5 of the build brief's core lifecycle (section 2.1):
-/// on-device owner wallet -> owner-proof challenge -> on-device signature
-/// -> create-managed smart wallet. Everything that touches key material
-/// goes through WalletService (bmoni_embedded_sdk); everything that
-/// touches BMONI goes through ApiClient (the backend's BmoniClient).
+/// Onboarding steps 2-4, Stellar-native:
 ///
-/// [bootstrapToken] (from ApiClient.createUser) is scoped to exactly one
-/// call — setting the owner address — so a real login (challenge/sign/
-/// login) has to happen right after that, before anything else here can
-/// call a protected route. See services/session_manager.dart.
+///   1. Set the 6-digit PIN that will gate every signature on this device.
+///   2. Generate the user's Stellar keypair ON THIS DEVICE (secure
+///      storage) and register its public key with the backend using the
+///      one-time bootstrap token.
+///   3. Log in (challenge signed with the new key) and fund the account
+///      via Friendbot on testnet — mainnet funding is a deliberate manual
+///      act, never automated here.
 ///
-/// Rendered as a navy "secure your wallet" moment (design brief §1) —
-/// the part of the flow closest to the key material, so it gets the
-/// wallet treatment rather than the paperwork treatment.
+/// The secret seed never leaves the device; only the public key crosses
+/// the network. Everything that touches key material goes through
+/// WalletService / StellarKeyService — never inline here.
 class PinAndWalletScreen extends StatefulWidget {
   final AppUser user;
   final String? bootstrapToken;
@@ -34,7 +34,7 @@ class PinAndWalletScreen extends StatefulWidget {
   State<PinAndWalletScreen> createState() => _PinAndWalletScreenState();
 }
 
-enum _Step { setPin, provisionWallet, chooseCurrency, done }
+enum _Step { setPin, generateKey, fund, done }
 
 class _PinAndWalletScreenState extends State<PinAndWalletScreen> {
   final _api = ApiClient();
@@ -42,9 +42,9 @@ class _PinAndWalletScreenState extends State<PinAndWalletScreen> {
   _Step _step = _Step.setPin;
   String? _error;
   bool _busy = false;
-  List<String> _currencies = [];
-  String? _selectedCurrency;
-  String? _ownerAddress;
+  String? _publicKey;
+  StellarClient? _client;
+  bool _funded = false;
   String? _pin;
 
   @override
@@ -60,15 +60,15 @@ class _PinAndWalletScreenState extends State<PinAndWalletScreen> {
   }
 
   Future<void> _bootstrap() async {
-    final hasPin = await WalletService.hasPin();
-    final hasWallet = await WalletService.hasWallet();
-    if (hasPin && hasWallet) {
-      _ownerAddress = await WalletService.currentAddress();
-      setState(() => _step = _Step.chooseCurrency);
-      await _loadCurrencies();
-    } else {
-      setState(() => _step = _Step.setPin);
+    if (await WalletService.hasPin()) {
+      // Returning to a half-finished onboarding: the key already exists.
+      _publicKey = await WalletService.currentAddress();
+      if (_publicKey != null) {
+        await _enterApp();
+        return;
+      }
     }
+    if (mounted) setState(() => _step = _Step.setPin);
   }
 
   Future<void> _submitPin() async {
@@ -81,12 +81,9 @@ class _PinAndWalletScreenState extends State<PinAndWalletScreen> {
       _error = null;
     });
     try {
-      if (!await WalletService.hasPin()) {
-        await WalletService.setPin(_pinController.text);
-      }
       _pin = _pinController.text;
-      setState(() => _step = _Step.provisionWallet);
-      await _provisionWallet();
+      setState(() => _step = _Step.generateKey);
+      await _generateAndRegisterKey();
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -94,30 +91,34 @@ class _PinAndWalletScreenState extends State<PinAndWalletScreen> {
     }
   }
 
-  Future<void> _provisionWallet() async {
+  Future<void> _generateAndRegisterKey() async {
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      String address;
-      if (await WalletService.hasWallet()) {
-        address = (await WalletService.currentAddress())!;
-      } else {
-        address = await WalletService.provisionWallet();
-      }
-      _ownerAddress = address;
-      await _api.setOwnerAddress(
+      // Generates on-device (secure storage) and sets the PIN verifier.
+      _publicKey = await WalletService.provisionWallet(_pin!);
+
+      // Register the PUBLIC key — the bootstrap token is scoped to exactly
+      // this one call (see AuthGuard on the backend).
+      await _api.setStellarPublicKey(
         widget.user.id,
-        address,
+        _publicKey!,
         bootstrapToken: widget.bootstrapToken,
       );
-      // The bootstrap token above is scoped to that one call — log in for
-      // real now so every route from here on (currencies, owner-proof
-      // challenge, smart wallet creation, KYC) has a proper access token.
+
+      // Real login now: the challenge is signed with the new key, proving
+      // on-device ownership, so every route from here has an access token.
       await SessionManager.login(widget.user.id, _pin!);
-      setState(() => _step = _Step.chooseCurrency);
-      await _loadCurrencies();
+
+      final network = await _api.getStellarNetwork();
+      _client = StellarClient.fromNetworkInfo(network);
+
+      _funded = await _client!.isAccountFunded(_publicKey!);
+      if (!mounted) return;
+      setState(() => _step = _funded ? _Step.done : _Step.fund);
+      if (_funded) await _enterApp();
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -125,56 +126,32 @@ class _PinAndWalletScreenState extends State<PinAndWalletScreen> {
     }
   }
 
-  Future<void> _loadCurrencies() async {
-    try {
-      final currencies = await _api.getSupportedCurrencies();
-      setState(() {
-        _currencies = currencies;
-        // NGN/USD are this build's priority rails (build brief §2.3) —
-        // default to the NGN stablecoin when available.
-        _selectedCurrency = currencies.contains('CNGN') ? 'CNGN' : currencies.first;
-      });
-    } catch (e) {
-      setState(() => _error = e.toString());
-    }
-  }
-
-  Future<void> _createSmartWallet() async {
-    if (_selectedCurrency == null || _ownerAddress == null || _pin == null) return;
+  Future<void> _fundViaFriendbot() async {
+    if (_client == null || _publicKey == null) return;
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final challenge = await _api.requestOwnerProofChallenge(
-        widget.user.id,
-        _selectedCurrency!,
-      );
-      final signature = await WalletService.signChallenge(challenge.message, _pin!);
-      final wallet = await _api.createSmartWallet(
-        widget.user.id,
-        currency: _selectedCurrency!,
-        ownerProofChallengeId: challenge.challengeId,
-        ownerProofSignature: signature,
-      );
+      await _client!.fundViaFriendbot(_publicKey!);
+      await _api.confirmActivation(widget.user.id);
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => KycWizardScreen(
-            user: widget.user,
-            // `wallet.currency` is BMONI's fiat label (e.g. "NGN"), not
-            // the stablecoin code that was sent in the create request —
-            // see SmartWallet DTO doc comment on the backend.
-            currency: wallet.currency,
-            smartWalletId: wallet.id,
-          ),
-        ),
-      );
+      setState(() => _step = _Step.done);
+      await _enterApp();
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _enterApp() async {
+    if (!mounted) return;
+    final user = await _api.getUser(widget.user.id);
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => WalletHomeScreen(user: user)),
+    );
   }
 
   @override
@@ -184,7 +161,7 @@ class _PinAndWalletScreenState extends State<PinAndWalletScreen> {
       child: Scaffold(
         backgroundColor: Colors.transparent, // reveal PfBackground waves
         appBar: AppBar(
-          title: const Text('Secure your wallet'),
+          title: const Text('Create your wallet'),
           backgroundColor: Colors.transparent,
         ),
         body: SafeArea(
@@ -204,18 +181,21 @@ class _PinAndWalletScreenState extends State<PinAndWalletScreen> {
 
   String get _stepTitle => switch (_step) {
         _Step.setPin => 'Secure your wallet',
-        _Step.provisionWallet => 'Generating your key',
-        _Step.chooseCurrency => 'Choose your first wallet',
+        _Step.generateKey => 'Creating your account',
+        _Step.fund => 'Activate your account',
         _Step.done => 'Done',
       };
 
   String get _stepSubtitle => switch (_step) {
         _Step.setPin =>
           'A 6-digit PIN gates every signature on this device. PayFlex never '
-              'stores it — only a verifiable digest lives in secure storage.',
-        _Step.provisionWallet =>
-          'Creating an on-device EVM owner key. It never leaves this phone.',
-        _Step.chooseCurrency => 'Your wallet settles on BMONI smart-wallet rails.',
+              'stores it — only a verifiable digest lives on this phone.',
+        _Step.generateKey =>
+          'Generating your Stellar key on this device. The secret never '
+              'leaves this phone — not even PayFlex can move your money.',
+        _Step.fund =>
+          'Your account needs a small one-time XLM balance to activate on '
+              'the Stellar network. On testnet, Friendbot funds it instantly.',
         _Step.done => '',
       };
 
@@ -229,14 +209,14 @@ class _PinAndWalletScreenState extends State<PinAndWalletScreen> {
         ],
       );
     }
-    if (_busy && _step == _Step.provisionWallet) {
+    if (_busy) {
       return const Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           PfBrandedLoader(size: 64),
           SizedBox(height: 22),
           Text(
-            'Generating your on-device key…',
+            'Working…',
             style: TextStyle(color: PfColors.onNavyMuted, fontSize: 14),
           ),
         ],
@@ -261,7 +241,7 @@ class _PinAndWalletScreenState extends State<PinAndWalletScreen> {
         const SizedBox(height: 26),
         switch (_step) {
           _Step.setPin => _pinStep(),
-          _Step.chooseCurrency => _currencyStep(),
+          _Step.fund => _fundStep(),
           _ => const SizedBox.shrink(),
         },
       ],
@@ -310,7 +290,7 @@ class _PinAndWalletScreenState extends State<PinAndWalletScreen> {
         ),
         const SizedBox(height: 20),
         PfPrimaryButton(
-          label: 'Set PIN',
+          label: 'Set PIN & create wallet',
           icon: Icons.lock_outline_rounded,
           busy: _busy,
           onPressed: _busy ? null : _submitPin,
@@ -319,148 +299,51 @@ class _PinAndWalletScreenState extends State<PinAndWalletScreen> {
     );
   }
 
-  Widget _currencyStep() {
+  Widget _fundStep() {
+    final isTestnet = _client?.isTestnet ?? true;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (_ownerAddress != null)
+        if (_publicKey != null)
           PfPanel(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             radius: PfRadius.sm,
             showShadow: false,
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Owner address',
+                  'Your Stellar address',
                   style: TextStyle(color: PfColors.onNavyMuted, fontSize: 12.5),
                 ),
-                const Spacer(),
-                Flexible(
-                  child: SelectableText(
-                    _ownerAddress!,
-                    maxLines: 1,
-                    style: const TextStyle(
-                      color: PfColors.onNavy,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
+                const SizedBox(height: 4),
+                SelectableText(
+                  _publicKey!,
+                  style: const TextStyle(
+                    color: PfColors.onNavy,
+                    fontSize: 11.5,
+                    fontFamily: 'monospace',
                   ),
                 ),
               ],
             ),
           ),
         const SizedBox(height: 18),
-        if (_currencies.isEmpty)
-          const Center(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: PfBrandedLoader(size: 40),
-            ),
+        if (isTestnet)
+          PfPrimaryButton(
+            label: 'Fund with testnet Friendbot',
+            icon: Icons.water_drop_outlined,
+            busy: _busy,
+            onPressed: _busy ? null : _fundViaFriendbot,
           )
         else
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              ..._currencies.map((c) {
-                final selected = _selectedCurrency == c;
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(PfRadius.md),
-                    border: Border.all(
-                      color: selected ? PfColors.emerald : PfColors.navyBorder,
-                      width: selected ? 1.5 : 1,
-                    ),
-                    color: selected ? PfColors.emerald.withValues(alpha: 0.08) : PfColors.navyRaised,
-                  ),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(PfRadius.md),
-                    onTap: () => setState(() => _selectedCurrency = c),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 12,
-                            height: 12,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: selected ? PfColors.emerald : PfColors.onNavyFaint,
-                                width: 2,
-                              ),
-                            ),
-                            child: selected
-                                ? Center(
-                                    child: Container(
-                                      width: 6,
-                                      height: 6,
-                                      decoration: const BoxDecoration(
-                                        color: PfColors.emerald,
-                                        shape: BoxShape.circle,
-                                      ),
-                                    ),
-                                  )
-                                : null,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  c,
-                                  style: const TextStyle(
-                                    color: PfColors.onNavy,
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 0.4,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  _friendlyCurrency(c),
-                                  style: const TextStyle(
-                                    color: PfColors.onNavyMuted,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (selected)
-                            const Icon(
-                              Icons.check_circle_rounded,
-                              color: PfColors.emerald,
-                              size: 20,
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              }),
-              const SizedBox(height: 14),
-              PfPrimaryButton(
-                label: 'Create wallet',
-                icon: Icons.arrow_forward_rounded,
-                busy: _busy,
-                onPressed: _currencies.isEmpty ? null : _createSmartWallet,
-              ),
-            ],
+          const Text(
+            'On mainnet, send a real minimum-balance XLM payment to this '
+            'address from an already-funded account to activate it. PayFlex '
+            'deliberately does not automate this.',
+            style: TextStyle(color: PfColors.onNavyMuted, fontSize: 12.5, height: 1.45),
           ),
       ],
     );
-  }
-
-  String _friendlyCurrency(String stablecoin) {
-    return switch (stablecoin) {
-      'CNGN' => 'Nigerian naira · NGN',
-      'USDB' => 'US dollar · USD',
-      'CADC' => 'Canadian dollar · CAD',
-      'EURe' => 'Euro · EUR',
-      'MEXe' => 'Mexican peso · MXN',
-      _ => stablecoin,
-    };
   }
 }

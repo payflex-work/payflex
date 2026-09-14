@@ -15,7 +15,7 @@ import { IS_PUBLIC_KEY } from './public.decorator';
  * default, routes opt out via @Public(). Two things happen here:
  *
  *  1. Authentication: verifies the Bearer token, attaches
- *     `request.user = { appUserId, bmoniUserId }`.
+ *     `request.user = { appUserId, stellarPublicKey }`.
  *  2. Ownership: for any route shaped `/users/:id/...` (the overwhelming
  *     majority of this API), the token's own appUserId must match the
  *     `:id` in the URL — a valid token for user A can never act as user
@@ -25,16 +25,16 @@ import { IS_PUBLIC_KEY } from './public.decorator';
  *     instead (marked with @Public()) or just not owner-scoped.
  *
  * Bootstrap tokens (see TokenService) are accepted ONLY on
- * `PATCH /users/:id/owner-address` — the one call that has to happen
+ * `PATCH /users/:id/stellar-public-key` — the one call that has to happen
  * before a real login is even possible, since login proves ownership of
  * the on-device key by verifying a signature against the registered
- * owner address, and there is no owner address yet at that point.
+ * public key, and there is no key registered yet at that point.
  * Residual risk accepted here: a bootstrap token is a bearer credential
  * for that one endpoint for up to 10 minutes after account creation, so
  * if it leaks in that narrow window before the real login happens, it
- * could be used to overwrite the registered owner address once. That's a
- * materially smaller window/blast-radius than every other endpoint being
- * unauthenticated, which is the problem this guard exists to fix.
+ * could be used to set the registered public key once. After that, keys
+ * are immutable (see UsersService.setStellarPublicKey), so the account
+ * stays under the control of whoever holds the device keypair.
  */
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -58,9 +58,9 @@ export class AuthGuard implements CanActivate {
 
     if (payload.scope === 'bootstrap') {
       const routePath = request.route?.path as string | undefined;
-      const isOwnerAddressRoute = request.method === 'PATCH' && routePath === '/users/:id/owner-address';
-      if (!isOwnerAddressRoute || request.params.id !== payload.sub) {
-        throw new ForbiddenException('This token can only be used to set an owner address, once.');
+      const isPublicKeyRoute = request.method === 'PATCH' && routePath === '/users/:id/stellar-public-key';
+      if (!isPublicKeyRoute || request.params.id !== payload.sub) {
+        throw new ForbiddenException('This token can only be used to register a Stellar public key, once.');
       }
       (request as Request & { user: { appUserId: string } }).user = { appUserId: payload.sub };
       return true;
@@ -70,9 +70,9 @@ export class AuthGuard implements CanActivate {
       throw new UnauthorizedException('This token cannot be used to call the API directly.');
     }
 
-    (request as Request & { user: { appUserId: string; bmoniUserId?: string } }).user = {
+    (request as Request & { user: { appUserId: string; stellarPublicKey?: string } }).user = {
       appUserId: payload.sub,
-      bmoniUserId: payload.bmoniUserId,
+      stellarPublicKey: payload.stellarPublicKey,
     };
 
     if (request.params.id && request.params.id !== payload.sub) {

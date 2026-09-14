@@ -12,7 +12,7 @@ export class CreateUserDto {
   @IsEmail()
   email!: string;
 
-  // E.164, e.g. +2348000000001 — BMONI rejects a bare local-format number.
+  // E.164, e.g. +2348000000001 — a bare local-format number is rejected.
   @Matches(/^\+[1-9]\d{6,14}$/, {
     message: 'phoneNumber must be E.164, e.g. +2348000000001',
   })

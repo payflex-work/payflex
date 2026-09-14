@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/app_user.dart';
 import '../../models/split_bill.dart';
-import '../../models/transfer.dart';
 import '../../services/api_client.dart';
 import '../../services/transfer_flow.dart';
 import '../../theme/payflex_tokens.dart';
@@ -12,11 +11,10 @@ import '../../widgets/pf_buttons.dart';
 import '../../widgets/pf_flow.dart';
 import '../../widgets/pf_motion.dart';
 import '../../widgets/pf_states.dart';
-import '../transfer/send_money_screen.dart' show humanTransferStatus, transferTone;
 
-/// Build brief §4.3 — split-bill. Orchestration only: BMONI has no
-/// group-payment primitive, so each contributor's payment is an
-/// independent TransferService proposal they sign themselves.
+/// Split bills — orchestration only. Each contributor's payment is an
+/// independent on-device Stellar payment recorded by the backend (which
+/// verifies it against Horizon) with splitBillId set.
 class SplitBillScreen extends StatefulWidget {
   final AppUser user;
   const SplitBillScreen({super.key, required this.user});
@@ -50,14 +48,47 @@ class _SplitBillScreenState extends State<SplitBillScreen> {
 
   Future<void> _payShare(SplitBill bill) async {
     try {
-      final proposal = await _api.paySplitBillShare(widget.user.id, bill.id);
+      final myShare = bill.contributors
+          .where((c) => c.appUserId == widget.user.id)
+          .cast<SplitBillContributor?>()
+          .firstWhere((c) => true, orElse: () => null);
+      if (myShare == null) {
+        throw StateError("You're not a contributor on this bill.");
+      }
+
+      // The contributor pays the bill CREATOR directly (on-device Stellar
+      // payment); the backend records it (verified on Horizon) with
+      // splitBillId set and flips this contributor to RECORDED.
+      final creator = await _api.getUser(bill.creatorAppUserId);
+      final creatorKey = creator.stellarPublicKey;
+      if (creatorKey == null) {
+        throw StateError("The bill creator hasn't finished Stellar setup yet.");
+      }
       if (!mounted) return;
-      final signed = await signAndSubmitTransfer(context, _api, widget.user.id, proposal.id);
-      if (signed != null && mounted) {
+
+      final result = await signAndSubmitTransfer(
+        context,
+        _api,
+        widget.user.id,
+        toPublicKey: creatorKey,
+        amount: myShare.shareAmount,
+        assetCode: bill.assetCode,
+        kind: TransferKind.splitBill,
+        splitBillId: bill.id,
+        memo: 'split ${bill.id}',
+      );
+      if (!mounted) return;
+      if (result != null && result.success) {
         await showPfConfirmation(
           context,
-          outcome: _outcome(signed, 'Share paid',
-              caption: '${bill.description} · split bill'),
+          outcome: outcomeForPayment(
+            result,
+            headline: 'Share paid',
+            amount: myShare.shareAmount,
+            assetCode: bill.assetCode,
+            caption: '${bill.description} · split bill',
+            methodLabel: 'Split bill',
+          ),
         );
         await _load();
       }
@@ -68,18 +99,6 @@ class _SplitBillScreenState extends State<SplitBillScreen> {
       }
     }
   }
-
-  PfFlowOutcome _outcome(Proposal signed, String headline, {String? caption}) =>
-      PfFlowOutcome(
-        headline: headline,
-        amount: signed.amount,
-        currency: signed.currency,
-        caption: caption,
-        reference: signed.id,
-        statusLabel: humanTransferStatus(signed.status),
-        statusTone: transferTone(signed.status),
-        methodLabel: 'Split bill',
-      );
 
   @override
   Widget build(BuildContext context) {
@@ -136,7 +155,7 @@ class _SplitBillScreenState extends State<SplitBillScreen> {
 
   Widget _billCard(SplitBill bill) {
     final paidCount = bill.contributors
-        .where((c) => c.status.toUpperCase() == 'PAID' || c.status.toUpperCase() == 'COMPLETED')
+        .where((c) => c.status.toUpperCase() == 'RECORDED' || c.status.toUpperCase() == 'PAID')
         .length;
     final total = bill.contributors.length;
     final fraction = total == 0 ? 0.0 : paidCount / total;
@@ -168,7 +187,7 @@ class _SplitBillScreenState extends State<SplitBillScreen> {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      formatMoney(bill.totalAmount, bill.currency),
+                      formatMoney(bill.totalAmount, bill.assetCode),
                       style: const TextStyle(color: PfColors.inkMuted, fontSize: 13.5),
                     ),
                   ],
@@ -202,8 +221,8 @@ class _SplitBillScreenState extends State<SplitBillScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: bill.contributors.map((c) {
                     final isMe = c.appUserId == widget.user.id;
-                    final paid = c.status.toUpperCase() == 'PAID' ||
-                        c.status.toUpperCase() == 'COMPLETED';
+                    final paid = c.status.toUpperCase() == 'RECORDED' ||
+                        c.status.toUpperCase() == 'PAID';
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 2),
                       child: Row(
@@ -219,7 +238,7 @@ class _SplitBillScreenState extends State<SplitBillScreen> {
                             ),
                           ),
                           Text(
-                            formatMoney(c.shareAmount, bill.currency),
+                            formatMoney(c.shareAmount, bill.assetCode),
                             style: const TextStyle(
                               color: PfColors.ink,
                               fontSize: 12.5,
@@ -298,12 +317,12 @@ class _CreateSplitBillScreenState extends State<CreateSplitBillScreen> {
       await _api.createSplitBill(
         widget.user.id,
         description: _descriptionController.text,
-        currency: _currency,
+        assetCode: _currency,
         totalAmount: _totalController.text,
         contributors: _contributors
             .map((c) => (
                   payTag: c.payTagController.text,
-                  bmoniUserId: null,
+                  publicKey: null,
                   shareAmount: c.shareController.text,
                 ))
             .toList(),

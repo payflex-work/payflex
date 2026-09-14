@@ -1,7 +1,8 @@
 version: "3.8"
 
 # Local dev infra only — Postgres for the app DB, Redis for cache/session.
-# BMONI itself is a remote sandbox; nothing BMONI-related runs here.
+# Nothing else runs here: Stellar (Horizon/Friendbot) is a public network
+# the app and backend talk to over the internet, not something we host.
 services:
   postgres:
     image: postgres:16-alpine

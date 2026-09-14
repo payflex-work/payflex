@@ -5,6 +5,7 @@ import '../../stellar/stellar_key_service.dart';
 import '../../stellar/stellar_models.dart';
 import '../../theme/payflex_tokens.dart';
 import '../../theme/payflex_theme.dart';
+import '../../utils/stellar_tx.dart';
 import '../../widgets/pf_balance_card.dart';
 import '../../widgets/pf_buttons.dart';
 import '../../widgets/pf_motion.dart';
@@ -12,12 +13,13 @@ import '../../widgets/pf_states.dart';
 import 'stellar_add_asset_screen.dart';
 import 'stellar_send_screen.dart';
 
-/// PayFlex's Stellar rail — an additional, OPTIONAL wallet that sits
-/// alongside the primary BMONI wallet, never routed through it. See
-/// the root README's "Stellar rail" section for the full architecture and why this exists.
+/// PayFlex's Stellar wallet screen — the account IS a Stellar account
+/// (the keypair lives in this device's secure storage), so this is the
+/// detailed view of the primary wallet: balances, trustlines, and
+/// on-chain history.
 ///
-/// This screen is honest about state at every step: not opted in yet ->
-/// opted in but not funded on-chain -> funded, with real balances,
+/// This screen is honest about state at every step: key not generated ->
+/// generated but not funded on-chain -> funded, with real balances,
 /// trustlines, and history. Never implies "your money is here" before
 /// the account is actually activated on the Stellar network.
 class StellarWalletScreen extends StatefulWidget {
@@ -147,13 +149,11 @@ class _StellarWalletScreenState extends State<StellarWalletScreen> {
           children: [
             const PfEmptyState(
               icon: Icons.hub_outlined,
-              title: 'An optional Stellar wallet',
+              title: 'No wallet on this device yet',
               message:
-                  'This is a second, separate wallet on the Stellar network — a real '
-                  'blockchain, not BMONI. It sits alongside your main PayFlex wallet, '
-                  'never replaces it. Your BMONI wallet stays the regulated, KYC\'d '
-                  'account this app is built on; Stellar is here for people who want '
-                  'a crypto-native option too.',
+                  'Your PayFlex account IS a Stellar account: the keypair is '
+                  'generated on this device and the secret never leaves it. '
+                  'Finish onboarding to create your wallet.',
             ),
             const SizedBox(height: PfSpace.lg),
             PfPrimaryButton(label: 'Create my Stellar wallet', onPressed: _optIn),
@@ -286,8 +286,10 @@ class _StellarWalletScreenState extends State<StellarWalletScreen> {
   }
 
   Widget _historyTile(StellarHistoryEntry h) {
+    final testnet = _client?.isTestnet ?? true;
     return PfPanel(
       margin: const EdgeInsets.only(bottom: 10),
+      onTap: () => openStellarExplorer(h.transactionHash, testnet: testnet),
       child: Row(
         children: [
           Expanded(
@@ -303,6 +305,7 @@ class _StellarWalletScreenState extends State<StellarWalletScreen> {
               ],
             ),
           ),
+          const Icon(Icons.open_in_new_rounded, color: PfColors.inkFaint, size: 15),
         ],
       ),
     );
@@ -336,11 +339,10 @@ class _StellarWalletScreenState extends State<StellarWalletScreen> {
             Text('About the Stellar wallet', style: TextStyle(color: PfColors.ink, fontSize: 16, fontWeight: FontWeight.w700)),
             SizedBox(height: 10),
             Text(
-              'This is a separate, optional rail on the real Stellar network — a '
-              'public blockchain, not BMONI. Your Stellar key lives only on this '
-              'device and is never sent to PayFlex\'s servers.\n\n'
-              'Unlike BMONI transfers, Stellar payments are irreversible the moment '
-              'they confirm on-chain — there is no undo. Double-check every address '
+              'Your PayFlex account is a real Stellar account. Your key lives '
+              'only on this device and is never sent to PayFlex\'s servers.\n\n'
+              'Stellar payments are irreversible the moment they confirm '
+              'on-chain — there is no undo. Double-check every address '
               'before sending.',
               style: TextStyle(color: PfColors.inkMuted, fontSize: 13, height: 1.5),
             ),

@@ -7,18 +7,18 @@ import '../protocol/crypto_utils.dart';
 /// ============================================================================
 /// CRITICAL ARCHITECTURAL DISTINCTION (See /docs/offline-protocol.md §3)
 /// ============================================================================
-/// This device keypair is strictly separated from BMONI's EVM wallet signing key.
+/// The offline protocol's independent device keypair.
 ///
-/// - The BMONI key (EIP-191 / secp256k1) is tied to the user's KYC-verified smart
-///   wallet and requires PIN-gated confirmation against BMONI's challenge payloads.
-/// - The Device Key (Ed25519) exists specifically so the offline optical handoff,
+/// - The PRIMARY Stellar key (StellarKeyService) is tied to the user's on-chain
+///   account and requires PIN-gated confirmation for every payment.
+/// - This The Device Key (Ed25519) exists specifically so the offline optical handoff,
 ///   Reserve authorizations, and PaymentConfirmations can be signed and verified
-///   on-device without needing BMONI's SDK or any network connection.
+///   on-device without needing any network connection.
 ///
 /// IMPORTANT: This device key proves only:
 /// "This specific physical device produced this exact signed message."
 /// It does NOT prove real-world legal identity; KYC and financial custody are
-/// governed entirely by BMONI at online settlement time.
+///   settled on-chain by StellarClient at online redemption time.
 class DeviceKeyService {
   static const String _keyStorageSlot = 'payflex_device_ed25519_seed_v1';
   static const String _pubKeyStorageSlot = 'payflex_device_ed25519_pubkey_v1';

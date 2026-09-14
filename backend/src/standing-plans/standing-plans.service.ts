@@ -1,8 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { PrismaService } from '../prisma/prisma.service';
-import { TransferService } from '../transfer/transfer.service';
-import { PayTagService } from '../transfer/paytag.service';
-import { CreateStandingPlanDto } from './dto/create-standing-plan.dto';
 
 const FREQUENCY_MS: Record<string, number> = {
   DAILY: 24 * 60 * 60 * 1000,
@@ -10,36 +8,85 @@ const FREQUENCY_MS: Record<string, number> = {
   MONTHLY: 30 * 24 * 60 * 60 * 1000,
 };
 
+export class CreateStandingPlanDto {
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  amount!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  assetCode!: string;
+
+  @IsOptional()
+  @IsString()
+  assetIssuer?: string;
+
+  @IsString()
+  frequency!: string;
+
+  @IsOptional()
+  @IsString()
+  toPublicKey?: string;
+
+  @IsOptional()
+  @IsString()
+  toPayTag?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+}
+
 /**
- * Recurring transfers to a chosen recipient — PayFlex's own scheduled-
- * payment layer, since BMONI has no recurring-payment or delegated-debit
- * primitive (see the doc comment on StandingPlan in schema.prisma). Same
- * structure as SavingsService, and the same honest limitation: the
- * scheduler can only ever mark a payment DUE, never execute it
- * unattended, because every transfer needs the user's live on-device
- * signature.
+ * Recurring payments — PayFlex's own scheduled-payment layer. Stellar has
+ * no delegated-debit primitive either, and this app deliberately does not
+ * pretend otherwise (the pre-authorization question from the original
+ * design stays open and stays HONEST): the scheduler can only mark a
+ * payment DUE and advance the schedule. Execution always requires the
+ * user's live on-device signature — the app surfaces due payments, the
+ * user signs, the payment is recorded via the verified transfer-record
+ * endpoint with kind=STANDING_PLAN.
  */
 @Injectable()
 export class StandingPlansService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly transfers: TransferService,
-    private readonly payTags: PayTagService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async createPlan(appUserId: string, dto: CreateStandingPlanDto) {
-    if (!dto.toBmoniUserId && !dto.toPayTag) {
-      throw new BadRequestException('Exactly one of toBmoniUserId or toPayTag is required.');
+    if (!dto.toPublicKey && !dto.toPayTag) {
+      throw new BadRequestException('Exactly one of toPublicKey or toPayTag is required.');
     }
+    if (!FREQUENCY_MS[dto.frequency]) {
+      throw new BadRequestException('frequency must be one of DAILY, WEEKLY, MONTHLY.');
+    }
+
+    // Resolve the PayTag to a public key at creation time so the stored
+    // plan is chain-actionable; the tag's owner can't be silently swapped.
+    let toPublicKey = dto.toPublicKey;
+    if (dto.toPayTag) {
+      const tag = await this.prisma.payTag.findUnique({
+        where: { tag: dto.toPayTag },
+        include: { appUser: { select: { stellarPublicKey: true } } },
+      });
+      if (!tag?.appUser.stellarPublicKey) {
+        throw new BadRequestException(`No PayFlex user with PayTag @${dto.toPayTag} (or they have no key yet).`);
+      }
+      toPublicKey = tag.appUser.stellarPublicKey;
+    }
+
     const nextPaymentAt = new Date(Date.now() + FREQUENCY_MS[dto.frequency]);
     return this.prisma.standingPlan.create({
       data: {
         appUserId,
         name: dto.name,
-        currency: dto.currency,
+        assetCode: dto.assetCode,
+        assetIssuer: dto.assetIssuer,
         amount: dto.amount,
         frequency: dto.frequency,
-        toBmoniUserId: dto.toBmoniUserId,
+        toPublicKey,
         toPayTag: dto.toPayTag,
         description: dto.description,
         nextPaymentAt,
@@ -74,9 +121,8 @@ export class StandingPlansService {
   /**
    * The scheduler's only job: for every ACTIVE plan whose nextPaymentAt
    * has passed, create a DUE payment row and advance nextPaymentAt.
-   * Nothing here touches BMONI — see `pay()` for the step that actually
-   * creates a signable proposal, which only happens when the user is
-   * present in the app to trigger it.
+   * It can NEVER execute a payment — that needs the user's on-device
+   * signature, which nothing server-side may hold.
    */
   async runDueCheck(): Promise<{ plansChecked: number; paymentsCreated: number }> {
     const now = new Date();
@@ -100,12 +146,10 @@ export class StandingPlansService {
   }
 
   /**
-   * Creates the actual signable TRANSFER proposal for a due payment —
-   * the caller signs/submits it through the normal transfer endpoints
-   * (/users/:id/transfers/:proposalId/sign-payload then /sign), same as
-   * any other transfer; this just resolves "who, how much."
+   * The app reports a due payment was signed and submitted on-chain; the
+   * referenced transfer record (already verified) confirms it.
    */
-  async pay(appUserId: string, paymentId: string) {
+  async recordPayment(appUserId: string, paymentId: string, stellarTxHash: string) {
     const payment = await this.prisma.standingPlanPayment.findUnique({
       where: { id: paymentId },
       include: { standingPlan: true },
@@ -117,29 +161,23 @@ export class StandingPlansService {
       throw new BadRequestException(`Payment ${paymentId} is already ${payment.status}.`);
     }
 
-    const plan = payment.standingPlan;
-    const toBmoniUserId = plan.toPayTag
-      ? (await this.payTags.resolve(plan.toPayTag)).bmoniUserId
-      : plan.toBmoniUserId!;
+    const record = await this.prisma.transferRecord.findUnique({ where: { stellarTxHash } });
+    if (!record || record.appUserId !== appUserId || record.standingPlanId !== paymentId) {
+      throw new BadRequestException(
+        'No verified on-chain payment references this standing-plan payment. Record it via ' +
+          'POST /users/:id/transfers/record with kind=STANDING_PLAN and standingPlanId set first.',
+      );
+    }
 
-    const proposal = await this.transfers.createTransfer(appUserId, {
-      toBmoniUserId,
-      amount: payment.amount,
-      currency: plan.currency,
-      description: `Standing plan: ${plan.name}`,
-    });
-
-    await this.prisma.$transaction([
+    return this.prisma.$transaction([
       this.prisma.standingPlanPayment.update({
         where: { id: paymentId },
-        data: { status: 'PROPOSED', bmoniProposalId: proposal.id },
+        data: { status: 'RECORDED', stellarTxHash, completedAt: new Date() },
       }),
       this.prisma.standingPlan.update({
-        where: { id: plan.id },
-        data: { totalPaid: (Number(plan.totalPaid) + Number(payment.amount)).toFixed(2) },
+        where: { id: payment.standingPlan.id },
+        data: { totalPaid: (Number(payment.standingPlan.totalPaid) + Number(payment.amount)).toFixed(7) },
       }),
     ]);
-
-    return proposal;
   }
 }

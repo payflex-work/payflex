@@ -19,7 +19,7 @@ class PaymentRequest {
   static const String protocolVersion = 'pf-payreq-v1';
 
   final String requestId;
-  final String merchantId; // bmoniUserId or PayTag
+  final String merchantId; // PayTag or device id
   final String? merchantName;
   final int amountMinorUnits;
   final String currency;
@@ -209,11 +209,11 @@ class PaymentConfirmation {
 
   final String confirmationId;
   final String requestId; // Bound to the original PaymentRequest
-  final String payerId; // Payer bmoniUserId or PayTag
+  final String payerId; // Payer PayTag or device id
   final String payerPublicKey; // Hex-encoded 32-byte Ed25519 public key
   final int amountMinorUnits;
   final String currency;
-  final String status; // 'SETTLED' (online BMONI) or 'RESERVE_PENDING' (offline Reserve)
+  final String status; // 'RESERVE_PENDING' (offline) — settled on-chain at redemption
   final String? authorizationId; // Set if paid from Offline Reserve
   final DateTime timestamp;
   final String checksum; // SHA-256 over canonical serialized fields

@@ -1,139 +1,134 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { BmoniClientService } from '../bmoni/bmoni-client.service';
+import { StellarService } from '../stellar/stellar.service';
 import { UsersService } from '../users/users.service';
-import { Proposal } from '../bmoni/dto/wallet-home.dto';
-import { stablecoinForFiat } from '../common/currency.util';
+import { CreateTransferDto } from './dto/create-transfer.dto';
+import { RecordTransferDto } from './dto/record-transfer.dto';
+
+const VALID_KINDS = ['TRANSFER', 'QR_PAY', 'OFFLINE_REDEMPTION', 'SPLIT_BILL', 'STANDING_PLAN', 'LINK_CLAIM'];
 
 /**
- * The single wrapper around BMONI's proposal -> sign-payload -> sign
- * primitive (build brief section 2.4). Every transfer mode — QR, PayTag,
- * send-via-link, split-bill (Phase 5) — resolves "who, how much" and then
- * calls into this service; nothing else in the app talks to the proposal
- * endpoints directly.
+ * Stellar-native transfers. The backend's role is deliberately small:
  *
- * Confirmed live (2026-09-04) mechanics this service encodes:
- *  - There is no separate "approve" endpoint. Submitting a valid
- *    signature via signProposal IS the approval action.
- *  - The value to sign is `signingPayloadHash` from getSignPayload, taken
- *    RAW as a digest (e.g. via bmoni_embedded_sdk's signTransactionHash)
- *    — NOT the full EIP-712 hash of the accompanying `typedData`. Signing
- *    the properly-computed EIP-712 digest was tested and rejected by
- *    BMONI ("signature does not match your registered owner address").
- *  - A proposal can remain at PENDING_APPROVALS/WAIT_APPROVALS
- *    indefinitely after being fully signed if the underlying wallet can't
- *    actually fund the transfer (e.g. zero balance in this sandbox) —
- *    that is not a bug in this integration.
+ *  - resolve WHO a PayTag points at (directory),
+ *  - show the recipient's name before the app builds a payment,
+ *  - RECORD and VERIFY what the app already submitted to Horizon.
+ *
+ * It cannot move money: every payment is built and signed on the user's
+ * device with their own Stellar key and submitted to the network by them.
  */
 @Injectable()
 export class TransferService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly bmoni: BmoniClientService,
+    private readonly stellar: StellarService,
     private readonly users: UsersService,
   ) {}
 
-  private async findSmartWallet(appUserId: string, currency: string) {
-    const wallet = await this.prisma.smartWallet.findFirst({ where: { appUserId, currency } });
-    if (!wallet) {
-      throw new NotFoundException(
-        `No ${currency} smart wallet on file for user ${appUserId} — create one first via ` +
-          `POST /users/${appUserId}/smart-wallets.`,
-      );
-    }
-    return wallet;
-  }
+  /**
+   * Resolves a transfer target to a Stellar public key + display name.
+   * The app uses this before building the payment (to show "sending to
+   * Ada" and embed the right destination). No chain interaction here.
+   */
+  async resolveTarget(appUserId: string, dto: CreateTransferDto) {
+    await this.users.findById(appUserId);
 
-  private async persistProposal(appUserId: string, smartWalletId: string, proposal: Proposal) {
-    await this.prisma.transferProposal.upsert({
-      where: { bmoniProposalId: proposal.id },
-      create: {
-        appUserId,
-        smartWalletId,
-        bmoniProposalId: proposal.id,
-        toBmoniUserId: proposal.toUserId,
-        toAddress: proposal.toAddress,
-        amount: proposal.amount,
-        currency: proposal.currency,
-        status: proposal.status,
-        nextAction: proposal.nextAction,
-      },
-      update: {
-        status: proposal.status,
-        nextAction: proposal.nextAction,
-      },
-    });
+    if (dto.toPayTag) {
+      const recipient = await this.prisma.payTag.findUnique({
+        where: { tag: dto.toPayTag },
+        include: { appUser: true },
+      });
+      if (!recipient?.appUser.stellarPublicKey) {
+        throw new NotFoundException(`No PayFlex user with PayTag @${dto.toPayTag}, or they have no Stellar key yet.`);
+      }
+      return {
+        toPublicKey: recipient.appUser.stellarPublicKey,
+        firstName: recipient.appUser.firstName,
+        lastName: recipient.appUser.lastName,
+      };
+    }
+
+    if (dto.toPublicKey) {
+      const known = await this.prisma.appUser.findUnique({ where: { stellarPublicKey: dto.toPublicKey } });
+      return {
+        toPublicKey: dto.toPublicKey,
+        firstName: known?.firstName ?? 'Unknown',
+        lastName: known?.lastName ?? 'recipient',
+      };
+    }
+
+    throw new BadRequestException('Exactly one of toPublicKey or toPayTag is required.');
   }
 
   /**
-   * Creates a TRANSFER proposal debiting the caller's wallet in
-   * `currency`. Exactly one of `toBmoniUserId` / `toAddress` should be
-   * set — BMONI resolves the recipient's wallet server-side from
-   * `toUserId` when given.
-   *
-   * `currency` here is the FIAT label our SmartWallet rows are keyed by
-   * (e.g. "NGN") — same as everywhere else in this app — not the
-   * stablecoin code BMONI's proposal body actually wants (e.g. "CNGN").
-   * See src/common/currency.util.ts for why those differ and why we
-   * translate here rather than asking every caller to know the mapping.
+   * Records a payment the app claims it submitted. The transaction is
+   * pulled from Horizon and verified field-by-field; a record is only
+   * written for payments that really exist and match the claim exactly.
+   * Idempotent on stellarTxHash (unique index).
    */
-  async createTransfer(
-    appUserId: string,
-    params: {
-      toBmoniUserId?: string;
-      toAddress?: string;
-      amount: string;
-      currency: string;
-      description?: string;
-    },
-  ): Promise<Proposal> {
+  async recordTransfer(appUserId: string, dto: RecordTransferDto) {
     const user = await this.users.findById(appUserId);
-    const wallet = await this.findSmartWallet(appUserId, params.currency);
+    if (dto.kind && !VALID_KINDS.includes(dto.kind)) {
+      throw new BadRequestException(`kind must be one of: ${VALID_KINDS.join(', ')}.`);
+    }
 
-    const proposal = await this.bmoni.createProposal(user.bmoniUserId, wallet.bmoniWalletId, {
-      type: 'TRANSFER',
-      toUserId: params.toBmoniUserId,
-      toAddress: params.toAddress,
-      amount: params.amount,
-      currency: stablecoinForFiat(params.currency),
-      description: params.description,
+    const verification = await this.stellar.verifyPayment({
+      txHash: dto.stellarTxHash,
+      fromPublicKey: dto.fromPublicKey,
+      toPublicKey: dto.toPublicKey,
+      amount: dto.amount,
+      assetCode: dto.assetCode,
+      assetIssuer: dto.assetIssuer,
     });
 
-    await this.persistProposal(appUserId, wallet.bmoniWalletId, proposal);
-    return proposal;
-  }
-
-  async getSignPayload(appUserId: string, proposalId: string) {
-    const user = await this.users.findById(appUserId);
-    return this.bmoni.getProposalSignPayload(user.bmoniUserId, proposalId);
-  }
-
-  async submitSignature(appUserId: string, proposalId: string, signature: string) {
-    const user = await this.users.findById(appUserId);
-    const result = await this.bmoni.signProposal(user.bmoniUserId, proposalId, { signature });
-    if (result.proposal) {
-      await this.persistProposal(appUserId, result.proposal.groupWalletId, result.proposal);
+    if (!verification.ok) {
+      throw new BadRequestException(`Payment verification failed: ${verification.reason}`);
     }
-    return result;
-  }
 
-  async reject(appUserId: string, proposalId: string, reason?: string) {
-    const user = await this.users.findById(appUserId);
-    const result = await this.bmoni.rejectProposal(user.bmoniUserId, proposalId, { reason });
-    if (result.proposal) {
-      await this.persistProposal(appUserId, result.proposal.groupWalletId, result.proposal);
+    if (dto.fromPublicKey !== user.stellarPublicKey) {
+      throw new BadRequestException(
+        'fromPublicKey does not match the authenticated user\u2019s registered Stellar public key.',
+      );
     }
-    return result;
+
+    try {
+      return await this.prisma.transferRecord.create({
+        data: {
+          appUserId,
+          stellarTxHash: dto.stellarTxHash,
+          fromPublicKey: dto.fromPublicKey,
+          toPublicKey: dto.toPublicKey,
+          amount: dto.amount,
+          assetCode: dto.assetCode,
+          assetIssuer: dto.assetIssuer,
+          kind: dto.kind ?? 'TRANSFER',
+          qrTokenRef: dto.qrTokenRef,
+          splitBillId: dto.splitBillId,
+          standingPlanId: dto.standingPlanId,
+          offlineAuthorizationId: dto.offlineAuthorizationId,
+          memo: verification.memo ?? dto.memo,
+        },
+      });
+    } catch (err) {
+      // Unique violation on stellarTxHash = already recorded; return the
+      // existing row so retries are harmless. Anything else is real.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        const existing = await this.prisma.transferRecord.findUnique({
+          where: { stellarTxHash: dto.stellarTxHash },
+        });
+        if (existing) return existing;
+      }
+      throw new BadRequestException('Could not record this payment (invalid reference).');
+    }
   }
 
-  async getProposal(appUserId: string, proposalId: string): Promise<Proposal> {
-    const user = await this.users.findById(appUserId);
-    return this.bmoni.getProposal(user.bmoniUserId, proposalId);
-  }
-
-  async listProposals(appUserId: string, currency: string) {
-    const user = await this.users.findById(appUserId);
-    const wallet = await this.findSmartWallet(appUserId, currency);
-    return this.bmoni.listProposals(user.bmoniUserId, wallet.bmoniWalletId);
+  async listTransfers(appUserId: string, limit = 50) {
+    await this.users.findById(appUserId);
+    return this.prisma.transferRecord.findMany({
+      where: { appUserId },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
   }
 }

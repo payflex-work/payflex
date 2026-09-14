@@ -3,9 +3,9 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
- * PayFlex's own @handle -> bmoniUserId directory (build brief section 3
- * — BMONI has no username/PayTag primitive). Resolved client-side (or by
- * TransferController) before every PayTag transfer.
+ * PayFlex's own @handle -> Stellar public key directory. Resolved by
+ * TransferService (or the app) before every PayTag payment: a PayTag
+ * payment is an ordinary on-device Stellar payment to the resolved key.
  */
 @Injectable()
 export class PayTagService {

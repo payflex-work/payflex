@@ -11,7 +11,8 @@ primary_region = "lhr" # pick the Fly region nearest your users
 [env]
   PORT = "3000"
   NODE_ENV = "production"
-  BMONI_ENV = "sandbox" # flip to production only with a real partner key
+  JWT_SECRET = "set-via-fly-secrets" # rotate freely; rotating logs every user out
+  QR_SIGNING_SECRET = "set-via-fly-secrets" # rotate freely; invalidates in-flight QR codes
   STELLAR_NETWORK = "testnet"
 
 # Migrations: release_command runs `npx prisma migrate deploy` in a fresh

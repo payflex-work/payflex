@@ -8,9 +8,8 @@ import '../../widgets/pf_buttons.dart';
 import '../../widgets/pf_motion.dart';
 import '../../widgets/pf_states.dart';
 
-/// PayFlex's own @handle directory (build brief §3 — no BMONI
-/// equivalent). Registering here is what makes SendMoneyScreen's PayTag
-/// mode resolvable for other users.
+/// PayFlex's own @handle directory (build brief §3). Registering here is
+/// what makes SendMoneyScreen's PayTag mode resolvable for other users.
 class PayTagScreen extends StatefulWidget {
   final AppUser user;
   const PayTagScreen({super.key, required this.user});

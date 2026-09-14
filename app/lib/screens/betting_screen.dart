@@ -3,11 +3,11 @@ import '../theme/payflex_tokens.dart';
 import '../theme/payflex_theme.dart';
 import '../widgets/pf_states.dart';
 
-/// Honest "not built" screen, matching StubRailsScreen's pattern. Betting
-/// funding needs real regulatory licensing (jurisdiction-dependent) and a
-/// merchant/provider integration — neither exists in this codebase, and
-/// there is nothing on the backend to fund. Never render a working-looking
-/// bet-placement flow with no real backing.
+/// Honest "paused" screen. Betting funding needs a real fiat rail
+/// (this app deliberately has none until a fiat provider is plugged in —
+/// see docs/fiat-kyc-gap.md) plus regulatory licensing and a merchant
+/// integration. Never render a working-looking bet-placement flow with
+/// no real backing.
 class BettingScreen extends StatelessWidget {
   const BettingScreen({super.key});
 

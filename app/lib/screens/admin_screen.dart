@@ -59,15 +59,15 @@ class _AdminScreenState extends State<AdminScreen> {
     }
   }
 
-  Future<void> _triggerSavingsDueCheck() async {
+  Future<void> _triggerDueCheck() async {
     setState(() {
       _triggering = true;
       _triggerResult = null;
     });
     try {
-      final res = await _api.triggerSavingsDueCheck();
+      final res = await _api.triggerStandingPlanDueCheck();
       setState(() => _triggerResult =
-          'Savings: ${res['contributionsCreated']} contribution(s) now due across ${res['goalsChecked']} goal(s).');
+          'Standing plans: ${res['paymentsCreated']} payment(s) now due across ${res['plansChecked']} plan(s).');
     } catch (e) {
       setState(() => _triggerResult = e.toString());
     } finally {
@@ -109,6 +109,10 @@ class _AdminScreenState extends State<AdminScreen> {
                             const SizedBox(height: PfSpace.sm),
                             _statsGrid(),
                             const SizedBox(height: PfSpace.xl),
+                            const PfSectionHeader(title: 'Hard gate status'),
+                            const SizedBox(height: PfSpace.sm),
+                            _gateStatusPanel(),
+                            const SizedBox(height: PfSpace.xl),
                             const PfSectionHeader(title: 'Actions'),
                             const SizedBox(height: PfSpace.sm),
                             PfPanel(
@@ -116,20 +120,20 @@ class _AdminScreenState extends State<AdminScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const Text(
-                                    'Run savings due-check now',
+                                    'Run standing-plan due-check now',
                                     style: TextStyle(color: PfColors.ink, fontSize: 14.5, fontWeight: FontWeight.w700),
                                   ),
                                   const SizedBox(height: 4),
                                   const Text(
-                                    "Marks any savings goal's contribution due immediately, "
-                                    'rather than waiting for the hourly scheduler.',
+                                    "Marks any active plan's next payment due immediately, "
+                                    'rather than waiting for the scheduler.',
                                     style: TextStyle(color: PfColors.inkMuted, fontSize: 12.5, height: 1.4),
                                   ),
                                   const SizedBox(height: 14),
                                   PfPrimaryButton(
                                     label: 'Run due-check',
                                     busy: _triggering,
-                                    onPressed: _triggering ? null : _triggerSavingsDueCheck,
+                                    onPressed: _triggering ? null : _triggerDueCheck,
                                   ),
                                   if (_triggerResult != null) ...[
                                     const SizedBox(height: 10),
@@ -148,19 +152,62 @@ class _AdminScreenState extends State<AdminScreen> {
     );
   }
 
+  Widget _gateStatusPanel() {
+    final gate = (_stats?['gateStatus'] as Map<String, dynamic>? ?? {});
+    return PfPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _gateRow(
+            'Identity verification (KYC)',
+            gate['identityVerification'] as String? ?? 'NOT CONFIGURED',
+          ),
+          const Divider(height: 18),
+          _gateRow(
+            'Fiat rails (deposits/withdrawals)',
+            gate['fiatRails'] as String? ?? 'NOT CONFIGURED',
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Every fiat/KYC feature is blocked by the architecture until a '
+            'real provider is plugged in — see docs/fiat-kyc-gap.md.',
+            style: TextStyle(color: PfColors.inkFaint, fontSize: 11.5, height: 1.4),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _gateRow(String label, String status) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Text(label, style: const TextStyle(color: PfColors.ink, fontSize: 13.5, fontWeight: FontWeight.w600)),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          flex: 2,
+          child: Text(
+            status,
+            textAlign: TextAlign.right,
+            style: const TextStyle(color: PfColors.warn, fontSize: 12, height: 1.35),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _statsGrid() {
     final s = _stats!;
-    final loansByStatus = (s['loansByStatus'] as Map<String, dynamic>? ?? {});
     final tiles = <(String, String)>[
       ('Total users', '${s['totalUsers']}'),
-      ('Agents', '${s['totalAgents']}'),
+      ('Identity-verified users', '${s['identityVerifiedUsers'] ?? 0}'),
+      ('Fiat-capable users', '${s['fiatCapableUsers'] ?? 0}'),
       ('Admins', '${s['totalAdmins']}'),
-      ('Safeboxes', '${s['totalSafeboxes']}'),
-      ('Savings goals', '${s['totalSavingsGoals']}'),
       ('Split bills', '${s['totalSplitBills']}'),
-      ('Pending escrowed links', '${s['pendingEscrowedLinks']}'),
-      ('Agent transactions', '${s['totalAgentTransactions']}'),
-      for (final entry in loansByStatus.entries) ('Loans: ${entry.key}', '${entry.value}'),
+      ('Send-via-links', '${s['totalSendViaLinks'] ?? 0}'),
+      ('Active standing plans', '${s['activeStandingPlans'] ?? 0}'),
     ];
 
     return Wrap(

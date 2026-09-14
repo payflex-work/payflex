@@ -26,7 +26,7 @@ void main() {
     test('Provisions and verifies a new ReserveAllowance', () async {
       final allowance = await service.provisionAllowance(
         appUserId: 'app_user_1',
-        bmoniUserId: 'bmoni_user_1',
+        stellarPublicKey: 'GATESTPAYERKEY0000000000000000000000000000000000000000000000001',
         amountMinorUnits: 2500000, // ₦25,000.00
         currency: 'NGN',
         explicitDeviceSeed: payerSeed,
@@ -45,7 +45,7 @@ void main() {
     test('Spends from allowance, increments monotonic sequence, chains state hash', () async {
       await service.provisionAllowance(
         appUserId: 'app_user_1',
-        bmoniUserId: 'bmoni_user_1',
+        stellarPublicKey: 'GATESTPAYERKEY0000000000000000000000000000000000000000000000001',
         amountMinorUnits: 1000000, // ₦10,000.00
         currency: 'NGN',
         explicitDeviceSeed: payerSeed,
@@ -109,7 +109,7 @@ void main() {
     test('Overspending remaining allowance throws OfflineReserveException', () async {
       await service.provisionAllowance(
         appUserId: 'app_user_1',
-        bmoniUserId: 'bmoni_user_1',
+        stellarPublicKey: 'GATESTPAYERKEY0000000000000000000000000000000000000000000000001',
         amountMinorUnits: 200000, // ₦2,000.00
         currency: 'NGN',
         explicitDeviceSeed: payerSeed,
@@ -147,7 +147,7 @@ void main() {
 
       await service.provisionAllowance(
         appUserId: 'app_user_1',
-        bmoniUserId: 'bmoni_user_1',
+        stellarPublicKey: 'GATESTPAYERKEY0000000000000000000000000000000000000000000000001',
         amountMinorUnits: 500000,
         currency: 'NGN',
         explicitDeviceSeed: payerSeed,

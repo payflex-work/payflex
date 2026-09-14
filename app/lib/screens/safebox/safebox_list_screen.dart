@@ -1,17 +1,21 @@
 import 'package:flutter/material.dart';
-import '../../theme/payflex_tokens.dart';
-import '../../theme/payflex_theme.dart';
-import '../../utils/money.dart';
+import '../../models/app_user.dart';
 import '../../models/safebox.dart';
 import '../../services/api_client.dart';
 import '../../widgets/pf_balance_card.dart';
 import '../../widgets/pf_motion.dart';
 import '../../widgets/pf_states.dart';
+import '../../theme/payflex_tokens.dart';
+import '../../theme/payflex_theme.dart';
 import 'safebox_create_screen.dart';
 import 'safebox_detail_screen.dart';
 
+/// Lists the Safebox contracts this user owns, with live on-chain state
+/// (owner, admins, closed, balance) re-read on every view — the backend
+/// only indexes; the chain is the source of truth.
 class SafeboxListScreen extends StatefulWidget {
-  const SafeboxListScreen({super.key});
+  final AppUser user;
+  const SafeboxListScreen({super.key, required this.user});
 
   @override
   State<SafeboxListScreen> createState() => _SafeboxListScreenState();
@@ -21,7 +25,7 @@ class _SafeboxListScreenState extends State<SafeboxListScreen> {
   final ApiClient _api = ApiClient();
   bool _isLoading = true;
   String? _error;
-  List<({Safebox safebox, String role})> _items = [];
+  List<Map<String, dynamic>> _items = [];
 
   @override
   void initState() {
@@ -35,7 +39,7 @@ class _SafeboxListScreenState extends State<SafeboxListScreen> {
       _error = null;
     });
     try {
-      final data = await _api.listSafeboxes();
+      final data = await _api.listSafeboxes(widget.user.id);
       if (mounted) {
         setState(() {
           _items = data;
@@ -55,7 +59,7 @@ class _SafeboxListScreenState extends State<SafeboxListScreen> {
   Future<void> _openCreate() async {
     final ok = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(builder: (_) => const SafeboxCreateScreen()),
+      MaterialPageRoute(builder: (_) => SafeboxCreateScreen(user: widget.user)),
     );
     if (ok == true) _loadData();
   }
@@ -83,10 +87,7 @@ class _SafeboxListScreenState extends State<SafeboxListScreen> {
                           padding: const EdgeInsets.all(PfSpace.lg),
                           itemCount: _items.length,
                           separatorBuilder: (_, __) => const SizedBox(height: PfSpace.md),
-                          itemBuilder: (context, index) {
-                            final item = _items[index];
-                            return _buildCard(item.safebox, item.role);
-                          },
+                          itemBuilder: (context, index) => _buildCard(_items[index]),
                         ),
         ),
         floatingActionButton: FloatingActionButton.extended(
@@ -108,23 +109,38 @@ class _SafeboxListScreenState extends State<SafeboxListScreen> {
         child: const PfEmptyState(
           icon: Icons.savings_outlined,
           title: 'No safeboxes yet',
-          message: 'Create a transparent group savings pool to save toward '
-              'something with people you trust.',
+          message: 'Start a group safebox and save toward something '
+              'together — the money sits in a contract on Stellar, and '
+              'only people you designate can withdraw it.',
         ),
       ),
     );
   }
 
-  Widget _buildCard(Safebox sb, String roleStr) {
-    SafeboxRole role = SafeboxRole.member;
-    if (roleStr.toUpperCase() == 'OWNER') role = SafeboxRole.owner;
-    if (roleStr.toUpperCase() == 'ADMIN') role = SafeboxRole.admin;
+  Widget _buildCard(Map<String, dynamic> row) {
+    final contractId = row['contractId'] as String? ?? '';
+    final chain = (row['chain'] as Map<String, dynamic>?) ?? const {};
+    final owner = chain['owner'] as String?;
+    final admins = (chain['admins'] as List<dynamic>?)?.cast<String>() ?? const [];
+    final myKey = widget.user.stellarPublicKey;
+
+    var role = SafeboxRole.member;
+    if (myKey != null && owner == myKey) {
+      role = SafeboxRole.owner;
+    } else if (myKey != null && admins.contains(myKey)) {
+      role = SafeboxRole.admin;
+    }
 
     return PfPanel(
       onTap: () async {
         await Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => SafeboxDetailScreen(safeboxId: sb.id)),
+          MaterialPageRoute(
+            builder: (_) => SafeboxDetailScreen(
+              user: widget.user,
+              safeboxId: contractId,
+            ),
+          ),
         );
         _loadData();
       },
@@ -136,8 +152,9 @@ class _SafeboxListScreenState extends State<SafeboxListScreen> {
             children: [
               Expanded(
                 child: Text(
-                  sb.name,
-                  style: const TextStyle(color: PfColors.ink, fontSize: 15.5, fontWeight: FontWeight.w700),
+                  row['name'] as String? ?? 'Safebox',
+                  style: const TextStyle(
+                      color: PfColors.ink, fontSize: 15.5, fontWeight: FontWeight.w700),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -147,7 +164,7 @@ class _SafeboxListScreenState extends State<SafeboxListScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            sb.description,
+            row['description'] as String? ?? '',
             style: const TextStyle(color: PfColors.inkMuted, fontSize: 12.5),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
@@ -161,45 +178,27 @@ class _SafeboxListScreenState extends State<SafeboxListScreen> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Pool balance', style: TextStyle(color: PfColors.inkFaint, fontSize: 11.5)),
+                  const Text('Contract balance', style: TextStyle(color: PfColors.inkFaint, fontSize: 11.5)),
                   const SizedBox(height: 2),
                   Text(
-                    formatMoneyValue(sb.currentBalance, 'NGN'),
-                    style: PfMoneyType.small.copyWith(color: PfColors.ink),
+                    '${chain['balance'] ?? '0'} XLM',
+                    style: const TextStyle(color: PfColors.ink, fontSize: 14, fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
-              if (sb.targetAmount != null && sb.targetAmount! > 0)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    const Text('Target goal', style: TextStyle(color: PfColors.inkFaint, fontSize: 11.5)),
-                    const SizedBox(height: 2),
-                    Text(
-                      formatMoneyValue(sb.targetAmount!, 'NGN'),
-                      style: const TextStyle(color: PfColors.inkMuted, fontSize: 14, fontWeight: FontWeight.w600),
-                    ),
-                  ],
-                ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  const Text('Contract', style: TextStyle(color: PfColors.inkFaint, fontSize: 11.5)),
+                  const SizedBox(height: 2),
+                  Text(
+                    shortPublicKey(contractId),
+                    style: const TextStyle(color: PfColors.inkMuted, fontSize: 11.5, fontFamily: 'monospace'),
+                  ),
+                ],
+              ),
             ],
           ),
-          if (sb.targetAmount != null && sb.targetAmount! > 0) ...[
-            const SizedBox(height: PfSpace.md),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: sb.progressPercentage,
-                minHeight: 6,
-                backgroundColor: PfColors.surfaceAlt,
-                valueColor: const AlwaysStoppedAnimation<Color>(PfColors.emerald),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '${(sb.progressPercentage * 100).toStringAsFixed(1)}% achieved',
-              style: const TextStyle(color: PfColors.inkFaint, fontSize: 11.5),
-            ),
-          ],
         ],
       ),
     );

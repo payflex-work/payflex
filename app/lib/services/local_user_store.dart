@@ -1,9 +1,9 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Persists the local PayFlex user id across app launches so we never
-/// re-run user creation on relaunch — per the build brief, recreating a
-/// BMONI user forks wallet history. This is checked before ever calling
-/// the backend's POST /users endpoint.
+/// re-run user creation on relaunch — recreating an account would fork
+/// the transaction history anchored to it. This is checked before ever
+/// calling the backend's POST /users endpoint.
 class LocalUserStore {
   static const _appUserIdKey = 'payflex.appUserId';
   static const _introSeenKey = 'payflex.introSeen';

@@ -23,7 +23,7 @@ class ReserveAllowance {
 
   final String allowanceId;
   final String appUserId;
-  final String bmoniUserId;
+  final String stellarPublicKey;
   final int initialAmountMinorUnits;
   int remainingAmountMinorUnits;
   final String currency;
@@ -37,7 +37,7 @@ class ReserveAllowance {
   ReserveAllowance({
     required this.allowanceId,
     required this.appUserId,
-    required this.bmoniUserId,
+    required this.stellarPublicKey,
     required this.initialAmountMinorUnits,
     required this.remainingAmountMinorUnits,
     required this.currency,
@@ -54,14 +54,14 @@ class ReserveAllowance {
     required String version,
     required String allowanceId,
     required String appUserId,
-    required String bmoniUserId,
+    required String stellarPublicKey,
     required int initialAmountMinorUnits,
     required String currency,
     required String createdAtIso,
     required String expiresAtIso,
     required String devicePublicKey,
   }) {
-    return '$version|allowanceId=$allowanceId|appUserId=$appUserId|bmoniUserId=$bmoniUserId|'
+    return '$version|allowanceId=$allowanceId|appUserId=$appUserId|stellarPublicKey=$stellarPublicKey|'
         'currency=$currency|devicePublicKey=$devicePublicKey|expiresAt=$expiresAtIso|'
         'createdAt=$createdAtIso|initialAmountMinorUnits=$initialAmountMinorUnits';
   }
@@ -70,7 +70,7 @@ class ReserveAllowance {
         version: protocolVersion,
         allowanceId: allowanceId,
         appUserId: appUserId,
-        bmoniUserId: bmoniUserId,
+        stellarPublicKey: stellarPublicKey,
         initialAmountMinorUnits: initialAmountMinorUnits,
         currency: currency.toUpperCase(),
         createdAtIso: createdAt.toUtc().toIso8601String(),
@@ -103,7 +103,7 @@ class ReserveAllowance {
         'version': protocolVersion,
         'allowanceId': allowanceId,
         'appUserId': appUserId,
-        'bmoniUserId': bmoniUserId,
+        'stellarPublicKey': stellarPublicKey,
         'initialAmountMinorUnits': initialAmountMinorUnits,
         'remainingAmountMinorUnits': remainingAmountMinorUnits,
         'currency': currency,
@@ -119,7 +119,7 @@ class ReserveAllowance {
     return ReserveAllowance(
       allowanceId: json['allowanceId'] as String,
       appUserId: json['appUserId'] as String,
-      bmoniUserId: json['bmoniUserId'] as String,
+      stellarPublicKey: json['stellarPublicKey'] as String,
       initialAmountMinorUnits: (json['initialAmountMinorUnits'] as num).toInt(),
       remainingAmountMinorUnits: (json['remainingAmountMinorUnits'] as num).toInt(),
       currency: (json['currency'] as String).toUpperCase(),
@@ -294,7 +294,7 @@ class OfflineReserveService {
   /// the device key and stored locally.
   Future<ReserveAllowance> provisionAllowance({
     required String appUserId,
-    required String bmoniUserId,
+    required String stellarPublicKey,
     required int amountMinorUnits,
     required String currency,
     Duration validity = const Duration(hours: 24),
@@ -316,7 +316,7 @@ class OfflineReserveService {
       version: ReserveAllowance.protocolVersion,
       allowanceId: allowanceId,
       appUserId: appUserId,
-      bmoniUserId: bmoniUserId,
+      stellarPublicKey: stellarPublicKey,
       initialAmountMinorUnits: amountMinorUnits,
       currency: currency.toUpperCase(),
       createdAtIso: now.toIso8601String(),
@@ -334,7 +334,7 @@ class OfflineReserveService {
     final allowance = ReserveAllowance(
       allowanceId: allowanceId,
       appUserId: appUserId,
-      bmoniUserId: bmoniUserId,
+      stellarPublicKey: stellarPublicKey,
       initialAmountMinorUnits: amountMinorUnits,
       remainingAmountMinorUnits: amountMinorUnits,
       currency: currency.toUpperCase(),
@@ -449,7 +449,7 @@ class OfflineReserveService {
     final confirmation = PaymentConfirmation.create(
       confirmationId: confId,
       requestId: request.requestId,
-      payerId: allowance.bmoniUserId,
+      payerId: allowance.stellarPublicKey,
       amountMinorUnits: request.amountMinorUnits,
       currency: request.currency.toUpperCase(),
       status: 'RESERVE_PENDING',

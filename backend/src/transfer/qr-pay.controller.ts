@@ -1,7 +1,6 @@
-import { Body, Controller, Param, Post } from '@nestjs/common';
-import { QrPayService } from './qr-pay.service';
-import { GenerateQrDto } from './dto/generate-qr.dto';
-import { PayQrDto } from './dto/pay-qr.dto';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Public } from '../auth/public.decorator';
+import { QrPayService, GenerateQrDto } from './qr-pay.service';
 
 @Controller('users/:id/qr')
 export class QrPayController {
@@ -11,10 +10,20 @@ export class QrPayController {
   generate(@Param('id') id: string, @Body() dto: GenerateQrDto) {
     return this.qrPay.generate(id, dto);
   }
+}
 
-  /** The payer's appUserId is :id — this is called after they scan and confirm. */
-  @Post('pay')
-  pay(@Param('id') id: string, @Body() dto: PayQrDto) {
-    return this.qrPay.pay(id, dto.token);
+/**
+ * Public decode endpoint: the PAYER's app calls this after scanning (the
+ * payer is not the QR owner, so no :id ownership scope applies). It only
+ * verifies the HMAC and returns the payload for the confirm screen.
+ */
+@Controller('qr')
+export class QrDecodeController {
+  constructor(private readonly qrPay: QrPayService) {}
+
+  @Public()
+  @Get('decode')
+  decode(@Query('token') token: string) {
+    return this.qrPay.decode(token);
   }
 }

@@ -1,9 +1,11 @@
 import 'dart:convert';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/format.dart';
+import 'transfer_flow.dart';
+import '../stellar/stellar_client.dart';
 import 'api_client.dart';
 import 'offline_reserve_service.dart';
-import 'wallet_service.dart';
 
 enum RedemptionStatus { pending, settled, failed, expired }
 
@@ -16,7 +18,7 @@ class OfflineTransactionRecord {
   final String currency;
   final DateTime createdAt;
   RedemptionStatus status;
-  String? proposalId;
+  String? stellarTxHash;
   String? errorMessage;
   DateTime? settledAt;
 
@@ -28,7 +30,7 @@ class OfflineTransactionRecord {
     required this.currency,
     required this.createdAt,
     this.status = RedemptionStatus.pending,
-    this.proposalId,
+    this.stellarTxHash,
     this.errorMessage,
     this.settledAt,
   });
@@ -46,7 +48,7 @@ class OfflineTransactionRecord {
         'currency': currency,
         'createdAt': createdAt.toIso8601String(),
         'status': status.name,
-        if (proposalId != null) 'proposalId': proposalId,
+        if (stellarTxHash != null) 'stellarTxHash': stellarTxHash,
         if (errorMessage != null) 'errorMessage': errorMessage,
         if (settledAt != null) 'settledAt': settledAt!.toIso8601String(),
       };
@@ -60,7 +62,7 @@ class OfflineTransactionRecord {
       currency: json['currency'] as String,
       createdAt: DateTime.parse(json['createdAt'] as String).toUtc(),
       status: RedemptionStatus.values.byName(json['status'] as String),
-      proposalId: json['proposalId'] as String?,
+      stellarTxHash: json['stellarTxHash'] as String?,
       errorMessage: json['errorMessage'] as String?,
       settledAt: json['settledAt'] != null
           ? DateTime.parse(json['settledAt'] as String).toUtc()
@@ -69,8 +71,11 @@ class OfflineTransactionRecord {
   }
 }
 
-/// Service managing the reconciliation and redemption of offline authorizations
-/// against the BMONI settlement engine once internet connectivity is restored.
+/// Reconciliation and settlement of offline authorizations: when internet
+/// connectivity is restored, each queued device-signed authorization is
+/// settled with a REAL on-device Stellar payment (signed with the user's
+/// key after their PIN), then recorded with the backend (which verifies
+/// the transaction against Horizon) as kind=OFFLINE_REDEMPTION.
 class OfflineRedemptionService {
   static const String _recordsStorageKey = 'payflex_offline_tx_records_v1';
   static const Duration pendingRedemptionWindow = Duration(hours: 48);
@@ -112,16 +117,20 @@ class OfflineRedemptionService {
     await _saveRecords();
   }
 
-  /// Attempts to redeem all queued offline authorizations through BMONI.
+  /// Attempts to settle all queued offline authorizations on Stellar.
+  /// Each one becomes an ordinary payment: resolve destination → PIN →
+  /// build/sign on-device → submit to Horizon → record (verified).
   Future<({int succeeded, int failed, int expired})> syncAndRedeemAll({
     required String appUserId,
     required ApiClient apiClient,
-    required String pin,
+    required BuildContext context,
     DateTime? now,
+    StellarClient? client,
   }) async {
     await loadRecords();
     final pendingQueue = await _reserveService.getPendingRedemptionQueue();
     final currentTime = (now ?? DateTime.now()).toUtc();
+    final stellar = client ?? await apiClient.stellarClient();
 
     var succeeded = 0;
     var failed = 0;
@@ -147,40 +156,38 @@ class OfflineRedemptionService {
         record.errorMessage = 'Redemption window expired (48h limit exceeded)';
         expired++;
         await _reserveService.removePendingAuthorization(auth.authorizationId);
+        if (recordIndex == -1) _records.insert(0, record);
         continue;
       }
 
       try {
         final amountStr = (auth.amountMinorUnits / 100.0).toStringAsFixed(2);
 
-        // 1. Create BMONI proposal via ApiClient
-        final proposal = await apiClient.createTransfer(
+        // Resolve the destination. A @PayTag goes through the directory;
+        // anything else is treated as a raw Stellar public key.
+        final isPayTag = auth.merchantId.startsWith('@');
+        final target = isPayTag
+            ? await apiClient.resolveTransfer(appUserId, toPayTag: auth.merchantId.substring(1))
+            : await apiClient.resolveTransfer(appUserId, toPublicKey: auth.merchantId);
+
+        // PIN → build → sign on-device → submit to Horizon → record.
+        if (!context.mounted) continue;
+        final result = await signAndSubmitTransfer(
+          context,
+          apiClient,
           appUserId,
-          toBmoniUserId: auth.merchantId.startsWith('@') ? null : auth.merchantId,
-          toPayTag: auth.merchantId.startsWith('@') ? auth.merchantId.substring(1) : null,
+          toPublicKey: target.toPublicKey,
           amount: amountStr,
-          currency: auth.currency,
-          description: 'Offline Reserve: ${shortRef(auth.authorizationId)}',
+          assetCode: auth.currency.toUpperCase(),
+          kind: TransferKind.offlineRedemption,
+          offlineAuthorizationId: auth.authorizationId,
+          memo: 'offline ${shortRef(auth.authorizationId)}',
+          client: stellar,
         );
 
-        record.proposalId = proposal.id;
-
-        // 2. Fetch sign payload
-        final signPayload = await apiClient.getTransferSignPayload(appUserId, proposal.id);
-
-        // 3. Sign EIP-191 digest using the user's PIN on the EVM owner key
-        final signature = await WalletService.signDigest(signPayload.signingPayloadHash, pin);
-
-        // 4. Submit signed proposal
-        final signedProposal = await apiClient.signTransfer(appUserId, proposal.id, signature);
-
-        // 5. Verify confirmation
-        if (signedProposal.status.toUpperCase() == 'COMPLETED' ||
-            signedProposal.status.toUpperCase() == 'SUCCESS' ||
-            signedProposal.status.toUpperCase() == 'SETTLED' ||
-            signedProposal.status.toUpperCase() == 'PENDING' ||
-            signedProposal.status.toUpperCase() == 'PROCESSING') {
+        if (result != null && result.success) {
           record.status = RedemptionStatus.settled;
+          record.stellarTxHash = result.transactionHash;
           record.settledAt = DateTime.now().toUtc();
           record.errorMessage = null;
           succeeded++;
@@ -189,7 +196,8 @@ class OfflineRedemptionService {
           await _reserveService.removePendingAuthorization(auth.authorizationId);
         } else {
           record.status = RedemptionStatus.failed;
-          record.errorMessage = 'Settlement status: ${signedProposal.status}';
+          record.errorMessage =
+              result?.errorMessage ?? 'Settlement cancelled — no signature was submitted.';
           failed++;
         }
       } catch (e) {

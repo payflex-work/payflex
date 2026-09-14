@@ -1,23 +1,21 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:stellar_flutter_sdk/stellar_flutter_sdk.dart';
 
-/// Manages the device's Stellar (ED25519) keypair — a THIRD, distinct key
-/// alongside the two already in this app:
-///   1. BMONI's EVM owner key (secp256k1, EIP-191) — bmoni_embedded_sdk.
-///   2. The offline-protocol device key (ED25519) — DeviceKeyService.
-///   3. This Stellar key (ED25519, StrKey-encoded) — never reused with #2
-///      even though both happen to be ED25519: different encoding
-///      (StrKey vs raw hex), different network, different purpose. Mixing
-///      them would mean a compromise of one leaks signing capability for
-///      the other.
+/// Manages the user's Stellar (ED25519) keypair — THE account key of the
+/// whole app. Every user IS a Stellar account: this keypair owns their
+/// funds, signs every payment, and proves login. Distinct from the
+/// offline-protocol device key (DeviceKeyService, ED25519 raw hex) — the
+/// two are never reused across each other even though both happen to be
+/// ED25519: different encoding (StrKey vs raw hex), different network,
+/// different blast radius. Mixing them would mean a compromise of one
+/// leaks signing capability for the other.
 ///
 /// The secret seed never leaves the device and is never sent to the
 /// PayFlex backend or logged. Stored in the
 /// platform keychain/keystore via flutter_secure_storage (Keychain on
 /// iOS, EncryptedSharedPreferences/Keystore on Android), NOT
-/// SharedPreferences, unlike this app's other injectable-storage
-/// services — the pasted build brief for this rail was explicit that the
-/// secret key needs real secure storage, not just "whatever's easiest."
+/// SharedPreferences — the secret key needs real secure storage, not
+/// just "whatever's easiest."
 class StellarKeyService {
   static const _secretSeedKey = 'payflex_stellar_secret_seed_v1';
   static const _storage = FlutterSecureStorage();
@@ -31,9 +29,9 @@ class StellarKeyService {
   static Future<String?> Function(String key)? secureReadHook;
   static Future<void> Function(String key, String value)? secureWriteHook;
 
-  /// True once the user has opted into the Stellar rail on this device
-  /// (a keypair exists locally) — distinct from whether that account is
-  /// funded/activated on-chain, which StellarClient checks separately.
+  /// True once the user's primary Stellar keypair exists locally —
+  /// distinct from whether that account is funded/activated on-chain,
+  /// which StellarClient checks separately.
   static Future<bool> hasOptedIn() async {
     final stored = await _read(_secretSeedKey);
     return stored != null && stored.isNotEmpty;

@@ -60,15 +60,13 @@ jobs:
 
       - name: Boot backend container (entrypoint runs migrations)
         run: |
-          # The BMONI sandbox key is committed in .env.example by design;
-          # reading it from there keeps CI in sync if it ever rotates.
-          BMONI_KEY=$(grep '^BMONI_API_KEY_SANDBOX=' backend/.env.example | cut -d= -f2-)
+          # Stellar testnet by default — no external credentials needed to
+          # boot. There is deliberately no provider key to inject: this
+          # build has no fiat rail or KYC provider at all.
           docker run -d --name payflex-ci-backend --network payflex-ci \
             -e DATABASE_URL="postgresql://payflex:payflex@payflex-ci-postgres:5432/payflex?schema=public" \
             -e REDIS_URL="redis://payflex-ci-redis:6379" \
-            -e BMONI_ENV=sandbox \
-            -e BMONI_BASE_URL_SANDBOX=https://embedded-dev.bmoni.com \
-            -e BMONI_API_KEY_SANDBOX="$BMONI_KEY" \
+            -e STELLAR_NETWORK=testnet \
             -e JWT_SECRET=ci-only-secret-not-for-production \
             -e QR_SIGNING_SECRET=ci-only-secret-not-for-production \
             payflex-backend:ci

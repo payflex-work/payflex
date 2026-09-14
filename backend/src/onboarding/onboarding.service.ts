@@ -1,198 +1,75 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { BmoniClientService } from '../bmoni/bmoni-client.service';
-import { BmoniApiError } from '../bmoni/bmoni.errors';
+import { StellarService } from '../stellar/stellar.service';
 import { UsersService } from '../users/users.service';
-import { Prisma } from '@prisma/client';
 
+/**
+ * Stellar-native onboarding. Creating a PayFlex account is local (see
+ * UsersService); THIS module is about putting that account on-chain:
+ *
+ *  1. The app generates the user's keypair on-device and registers the
+ *     public key (PATCH /users/:id/stellar-public-key).
+ *  2. The account must be "activated" — funded past the minimum reserve —
+ *     before it can hold assets or make payments. On TESTNET the app can
+ *     do this itself via Friendbot; this endpoint double-checks Horizon
+ *     and flips the local flag when the account really exists.
+ *  3. MAINNET: Friendbot does not exist. Activation requires a real
+ *     minimum-reserve payment (currently 1 XLM base reserve) from an
+ *     already-funded account. This backend deliberately does NOT automate
+ *     holding/paying out that reserve — that's a business decision for a
+ *     funded treasury (see docs/fiat-kyc-gap.md), not a code default.
+ */
 @Injectable()
 export class OnboardingService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly bmoni: BmoniClientService,
+    private readonly stellar: StellarService,
     private readonly users: UsersService,
   ) {}
 
-  getSupportedCurrencies() {
-    return this.bmoni.getSupportedCurrencies();
-  }
-
-  async requestOwnerProofChallenge(appUserId: string, currency: string) {
-    const user = await this.users.findById(appUserId);
-    if (!user.ownerAddress) {
-      throw new Error(
-        `AppUser ${appUserId} has no ownerAddress yet — call PATCH /users/${appUserId}/owner-address ` +
-          `with the device-generated EVM address before requesting a challenge.`,
-      );
-    }
-    return this.bmoni.requestOwnerProofChallenge(user.bmoniUserId, {
-      currency,
-      userOwnerAddress: user.ownerAddress,
-    });
-  }
-
-  async createSmartWallet(
-    appUserId: string,
-    params: { currency: string; ownerProofChallengeId: string; ownerProofSignature: string },
-  ) {
-    const user = await this.users.findById(appUserId);
-    if (!user.ownerAddress) {
-      throw new Error(`AppUser ${appUserId} has no ownerAddress yet.`);
-    }
-
-    const wallet = await this.bmoni.createManagedSmartWallet(user.bmoniUserId, {
-      currency: params.currency,
-      userOwnerAddress: user.ownerAddress,
-      ownerProofChallengeId: params.ownerProofChallengeId,
-      ownerProofSignature: params.ownerProofSignature,
-    });
-
-    await this.prisma.smartWallet.upsert({
-      where: { bmoniWalletId: wallet.id },
-      create: {
-        appUserId: user.id,
-        bmoniWalletId: wallet.id,
-        currency: wallet.currency,
-        address: wallet.walletAddress,
-        status: wallet.isActive ? 'active' : 'inactive',
-      },
-      update: {
-        currency: wallet.currency,
-        address: wallet.walletAddress,
-        status: wallet.isActive ? 'active' : 'inactive',
-      },
-    });
-
-    return wallet;
-  }
-
+  /** What the app should show as the next step for this user. */
   async getStatus(appUserId: string) {
     const user = await this.users.findById(appUserId);
-    return this.bmoni.getOnboardingStatus(user.bmoniUserId);
-  }
+    const funded = user.stellarPublicKey
+      ? await this.stellar.isAccountFunded(user.stellarPublicKey)
+      : false;
 
-  private async findSmartWalletByCurrency(appUserId: string, currency: string) {
-    const wallet = await this.prisma.smartWallet.findFirst({ where: { appUserId, currency } });
-    if (!wallet) {
-      throw new NotFoundException(
-        `No ${currency} smart wallet on file for user ${appUserId} — create one first via ` +
-          `POST /users/${appUserId}/smart-wallets.`,
-      );
+    // Keep the local flag honest: it reflects what Horizon says right now.
+    if (funded && !user.stellarAccountActivated) {
+      await this.prisma.appUser.update({
+        where: { id: appUserId },
+        data: { stellarAccountActivated: true },
+      });
     }
-    return wallet;
+
+    return {
+      hasStellarKey: Boolean(user.stellarPublicKey),
+      accountFunded: funded,
+      activated: funded,
+      nextStep: !user.stellarPublicKey
+        ? 'Generate a Stellar keypair on this device, then register its public key.'
+        : !funded
+          ? 'Fund the account to activate it: testnet = Friendbot, mainnet = a real minimum-reserve payment (see docs/fiat-kyc-gap.md).'
+          : 'Account is live — payments, Safeboxes, and links are available.',
+    };
   }
 
   /**
-   * Resolves ngnWalletAddress from the user's already-provisioned NGN
-   * smart wallet rather than requiring the caller to pass it again — the
-   * app already knows it from Phase 1's create-managed-wallet response,
-   * and BMONI's raw endpoint takes it as a plain string with no
-   * server-side ownership check, so there's no safety reason to make
-   * every caller re-supply it.
+   * Confirms activation for the CALLING user's account. On testnet the app
+   * has usually already hit Friendbot directly; this is the server-side
+   * verification that the account genuinely exists on-ledger. On mainnet
+   * this endpoint does not fund anything — it only verifies.
    */
-  async startNigeria(appUserId: string, params: { bvn: string; ngnWalletIndex: number }) {
+  async confirmActivation(appUserId: string) {
     const user = await this.users.findById(appUserId);
-    const wallet = await this.findSmartWalletByCurrency(appUserId, 'NGN');
-    if (!wallet.address) {
-      throw new Error(`NGN smart wallet ${wallet.id} has no address on file.`);
+    if (!user.stellarPublicKey) {
+      throw new NotFoundException('No Stellar public key registered for this account yet.');
     }
-    const result = await this.bmoni.startNigeria(user.bmoniUserId, {
-      bvn: params.bvn,
-      ngnWalletAddress: wallet.address,
-      ngnWalletIndex: params.ngnWalletIndex,
-    });
-    await this.prisma.railOnboarding.upsert({
-      where: { appUserId_currency: { appUserId, currency: 'NGN' } },
-      create: {
-        appUserId,
-        currency: 'NGN',
-        status: 'submitted',
-        workflowId: result.workflowId,
-        metadata: result as unknown as Prisma.InputJsonValue,
-      },
-      update: {
-        status: 'submitted',
-        workflowId: result.workflowId,
-        metadata: result as unknown as Prisma.InputJsonValue,
-      },
-    });
-    return result;
-  }
-
-  async startUsa(appUserId: string) {
-    const user = await this.users.findById(appUserId);
-    const wallet = await this.findSmartWalletByCurrency(appUserId, 'USD');
-    try {
-      const result = await this.bmoni.startUsa(user.bmoniUserId, {
-        smartWalletId: wallet.bmoniWalletId,
-      });
-      await this.prisma.railOnboarding.upsert({
-        where: { appUserId_currency: { appUserId, currency: 'USD' } },
-        create: { appUserId, currency: 'USD', status: 'submitted', workflowId: result.workflowId },
-        update: { status: 'submitted', workflowId: result.workflowId },
-      });
-      return result;
-    } catch (err) {
-      // Confirmed live: BMONI returns 422 with { kycStatus, fieldsToAction,
-      // ... } when the underlying Sumsub check isn't approved yet — record
-      // that as a distinct status rather than leaving no trace locally.
-      if (err instanceof BmoniApiError && err.status === 422) {
-        await this.prisma.railOnboarding.upsert({
-          where: { appUserId_currency: { appUserId, currency: 'USD' } },
-          create: {
-            appUserId,
-            currency: 'USD',
-            status: 'action_required',
-            metadata: err.rawBody as Prisma.InputJsonValue,
-          },
-          update: {
-            status: 'action_required',
-            metadata: err.rawBody as Prisma.InputJsonValue,
-          },
-        });
-      }
-      throw err;
+    const funded = await this.stellar.isAccountFunded(user.stellarPublicKey);
+    if (!funded) {
+      return { activated: false, reason: 'Account is not funded on-ledger yet.' };
     }
-  }
-
-  async getVbaUsdStatus(appUserId: string) {
-    const user = await this.users.findById(appUserId);
-    const status = await this.bmoni.getVbaUsdStatus(user.bmoniUserId);
-    await this.prisma.railOnboarding.updateMany({
-      where: { appUserId, currency: 'USD' },
-      data: { status: status.status },
-    });
-    return status;
-  }
-
-  // --- CAD/EUR/MXN (Phase 5 stubs — build brief section 2.3 explicitly
-  // asks for these "structurally wired but not UI-polished," unlike
-  // NGN/USD they get no local RailOnboarding persistence or dedicated
-  // Flutter screens; wire the rest properly if/when a phase actually
-  // targets one of these rails. Not exercised against the live sandbox   // with the same depth as NGN/USD/transfers.) ---------------------------------------------------
-
-  async startCanada(appUserId: string, body: { cadWalletAddress: string; cadWalletIndex: number }) {
-    const user = await this.users.findById(appUserId);
-    return this.bmoni.startCanada(user.bmoniUserId, body);
-  }
-
-  async startMonerium(appUserId: string, body: { eurWalletAddress: string; eurWalletIndex: number }) {
-    const user = await this.users.findById(appUserId);
-    return this.bmoni.startMonerium(user.bmoniUserId, body);
-  }
-
-  async activateLatamMxKyc(appUserId: string, body: Record<string, unknown>) {
-    const user = await this.users.findById(appUserId);
-    return this.bmoni.activateLatamMxKyc(user.bmoniUserId, body);
-  }
-
-  async getLatamMxAgreements(appUserId: string) {
-    const user = await this.users.findById(appUserId);
-    return this.bmoni.getLatamMxAgreements(user.bmoniUserId);
-  }
-
-  async getLatamMxKycStatus(appUserId: string) {
-    const user = await this.users.findById(appUserId);
-    return this.bmoni.getLatamMxKycStatus(user.bmoniUserId);
+    await this.users.markStellarAccountActivated(user.id);
+    return { activated: true };
   }
 }

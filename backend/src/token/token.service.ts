@@ -7,16 +7,16 @@ export type TokenScope = 'bootstrap' | 'access' | 'refresh';
 export interface TokenPayload {
   sub: string; // appUserId
   scope: TokenScope;
-  bmoniUserId?: string; // present on access tokens only
+  stellarPublicKey?: string; // present on access tokens only
   jti?: string; // present on refresh tokens only, for revocation lookups
 }
 
 /**
  * Pure JWT signing/verification — deliberately has no dependency on
  * UsersService or the database, so both AuthModule (which does need
- * UsersService, to look up ownerAddress during login) and UsersModule
- * (which needs to mint a bootstrap token right after creating a user)
- * can depend on this without a circular module import between them.
+ * UsersService, to look up the Stellar public key during login) and
+ * UsersModule (which needs to mint a bootstrap token right after creating a
+ * user) can depend on this without a circular module import between them.
  */
 @Injectable()
 export class TokenService {
@@ -24,10 +24,10 @@ export class TokenService {
 
   /**
    * Issued once, immediately after account creation, before the app has
-   * registered an owner address (so the real challenge/signature login
+   * registered a Stellar public key (so the real challenge/signature login
    * isn't possible yet) or logged in at all. Scoped to exactly one use —
    * AuthGuard only accepts a bootstrap token on
-   * PATCH /users/:id/owner-address, nothing else — and expires in 10
+   * PATCH /users/:id/stellar-public-key, nothing else — and expires in 10
    * minutes. See AuthGuard's doc comment for the residual-risk tradeoff
    * this accepts.
    */
@@ -35,9 +35,9 @@ export class TokenService {
     return this.jwt.sign({ sub: appUserId, scope: 'bootstrap' }, { expiresIn: '10m' });
   }
 
-  signAccessToken(appUserId: string, bmoniUserId: string): string {
+  signAccessToken(appUserId: string, stellarPublicKey: string): string {
     return this.jwt.sign(
-      { sub: appUserId, bmoniUserId, scope: 'access' },
+      { sub: appUserId, stellarPublicKey, scope: 'access' },
       { expiresIn: '2h' },
     );
   }
@@ -48,11 +48,12 @@ export class TokenService {
     return { token, jti };
   }
 
+  /** Verifies signature + expiry; throws UnauthorizedException on any failure. */
   verify(token: string): TokenPayload {
     try {
-      return this.jwt.verify<TokenPayload>(token);
+      return this.jwt.verify(token);
     } catch {
-      throw new UnauthorizedException('Invalid or expired token.');
+      throw new UnauthorizedException('Token is invalid or expired.');
     }
   }
 }

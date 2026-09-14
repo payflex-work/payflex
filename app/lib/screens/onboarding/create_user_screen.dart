@@ -92,8 +92,8 @@ class _CreateUserScreenState extends State<CreateUserScreen> {
                     ),
                     const SizedBox(height: 6),
                     const Text(
-                      'Your details open the wallet — KYC documents come '
-                      'later, one step at a time.',
+                      'Your details open the account — your Stellar wallet is '
+                      'created on this device in the next step.',
                       style: TextStyle(
                         color: PfColors.inkMuted,
                         fontSize: 13.5,
@@ -155,7 +155,7 @@ class _CreateUserScreenState extends State<CreateUserScreen> {
                       padding: EdgeInsets.symmetric(horizontal: 6),
                       child: Text(
                         'Phone numbers are E.164 (country code first) — used '
-                        'for verification and recovery only.',
+                        'to find your account if you create one twice.',
                         style: TextStyle(
                           color: PfColors.inkFaint,
                           fontSize: 12,

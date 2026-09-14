@@ -1,14 +1,12 @@
 name: payflex
-description: >
-  PayFlex — mobile-first microfinance app built on the BMONI Embedded API.
-  Phase 1: user creation + on-device owner wallet + managed smart wallet
-  provisioning. Phase 2: KYC wizard, NGN/USD rail onboarding, wallet home
-  balances/history. Phase 3: transfers, QR Pay, PayTag. Phase 4: savings
-  goals, loans, agent mode. Phase 5: split bills, send-via-link/escrow,
-  CAD/EUR/MXN stubs — all end to end against the PayFlex orchestration
-  backend.
+description: >-
+  PayFlex — mobile-first, non-custodial payments app on Stellar. Every user
+  IS a Stellar account: the keypair is generated on-device, the secret seed
+  never leaves the phone, and every payment is built, signed, and submitted
+  from the device. Fiat on/off-ramps and identity verification are
+  deliberately NOT implemented — see docs/fiat-kyc-gap.md.
 publish_to: 'none'
-version: 0.1.0
+version: 0.2.0
 
 environment:
   sdk: '^3.9.0'
@@ -20,27 +18,21 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # On-device EVM keypair generation, secure storage, and EIP-191 signing.
-  # Never implement key generation/signing outside this package.
-  bmoni_embedded_sdk: ^0.0.2
-
   http: ^1.2.2
   shared_preferences: ^2.3.2
   cupertino_icons: ^1.0.8
-  # Camera/gallery capture for KYC document + selfie upload (Phase 2).
-  image_picker: ^1.1.2
-  # QR Pay (Phase 3): render a payment QR and scan one to pay.
+  # QR Pay: render a payment QR and scan one to pay.
   qr_flutter: ^4.1.0
   mobile_scanner: ^7.4.0
-  # Stellar rail (optional, parallel to BMONI — see lib/stellar/). Official
-  # SDK: builds/signs/submits Stellar transactions and queries Horizon.
-  # Never implement Stellar key generation/signing outside this package,
-  # same rule as bmoni_embedded_sdk above.
+  # Stellar — the ONLY payment rail. Official SDK: builds/signs/submits
+  # Stellar transactions and queries Horizon. Never implement Stellar key
+  # generation/signing outside this package.
   stellar_flutter_sdk: ^3.6.0
   # Real device keychain/keystore for the Stellar secret key (not
   # SharedPreferences) — already pulled in transitively by
   # stellar_flutter_sdk; declared directly since lib/stellar/ uses it.
   flutter_secure_storage: ^10.3.1
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:

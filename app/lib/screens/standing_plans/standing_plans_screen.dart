@@ -5,19 +5,20 @@ import '../../services/api_client.dart';
 import '../../services/transfer_flow.dart';
 import '../../theme/payflex_tokens.dart';
 import '../../theme/payflex_theme.dart';
+import '../../utils/format.dart';
 import '../../utils/money.dart';
 import '../../widgets/pf_balance_card.dart';
 import '../../widgets/pf_buttons.dart';
 import '../../widgets/pf_flow.dart';
 import '../../widgets/pf_motion.dart';
 import '../../widgets/pf_states.dart';
-import '../transfer/send_money_screen.dart' show humanTransferStatus, transferTone;
 
-/// Recurring transfers to a chosen recipient (PayFlex's own scheduled-
-/// payment layer — see backend/prisma/schema.prisma's StandingPlan doc
-/// comment for why BMONI has nothing like this built in). A due payment
-/// is a real signed transfer, same sign/submit flow as everything else —
-/// nothing here executes without the user present to sign it.
+/// Recurring payments — PayFlex's own scheduled-payment layer on Stellar.
+/// The scheduler can only mark a payment DUE (no delegated debit exists
+/// on Stellar, and this app refuses to pretend otherwise — the
+/// pre-authorization question stays open and honest). Paying a due
+/// payment is the normal on-device flow: PIN → build → sign → submit →
+/// record (verified) → report against the plan.
 class StandingPlansScreen extends StatefulWidget {
   final AppUser user;
   const StandingPlansScreen({super.key, required this.user});
@@ -31,7 +32,7 @@ class _StandingPlansScreenState extends State<StandingPlansScreen> {
   final _nameController = TextEditingController();
   final _amountController = TextEditingController();
   final _recipientController = TextEditingController();
-  String _currency = 'NGN';
+  String _assetCode = 'XLM';
   String _frequency = 'MONTHLY';
   List<StandingPlan> _plans = [];
   final Map<String, List<StandingPlanPayment>> _duePaymentsByPlan = {};
@@ -82,18 +83,17 @@ class _StandingPlansScreenState extends State<StandingPlansScreen> {
       _error = null;
     });
     try {
-      // Accept either a raw bmoniUserId or a @PayTag in the same field —
-      // resolving which one the caller meant is the backend's job
-      // (mirrors how send-money handles a single "recipient" input).
+      // Accept either a @PayTag or a raw Stellar address in the same
+      // field — the backend resolves a PayTag to a key at creation time.
       final isPayTag = recipient.startsWith('@');
       await _api.createStandingPlan(
         widget.user.id,
         name: _nameController.text.trim(),
-        currency: _currency,
+        assetCode: _assetCode,
         amount: _amountController.text.trim(),
         frequency: _frequency,
         toPayTag: isPayTag ? recipient.substring(1) : null,
-        toBmoniUserId: isPayTag ? null : recipient,
+        toPublicKey: isPayTag ? null : recipient,
       );
       _nameController.clear();
       _amountController.clear();
@@ -108,20 +108,41 @@ class _StandingPlansScreenState extends State<StandingPlansScreen> {
 
   Future<void> _pay(StandingPlanPayment payment) async {
     try {
-      final proposal = await _api.payStandingPlanPayment(widget.user.id, payment.id);
+      final plan = payment.plan;
+      if (plan?.toPublicKey == null) {
+        throw StateError('This plan has no resolved destination key.');
+      }
+      // PIN → build → sign on-device → submit → record (kind=STANDING_PLAN).
+      final result = await signAndSubmitTransfer(
+        context,
+        _api,
+        widget.user.id,
+        toPublicKey: plan!.toPublicKey!,
+        amount: payment.amount,
+        assetCode: plan.assetCode,
+        assetIssuer: plan.assetIssuer,
+        kind: TransferKind.standingPlan,
+        standingPlanId: payment.id,
+      );
       if (!mounted) return;
-      final signed = await signAndSubmitTransfer(context, _api, widget.user.id, proposal.id);
-      if (signed != null && mounted) {
+      if (result == null) return; // cancelled at the PIN prompt
+      if (result.success) {
+        // Report it against the plan — the backend cross-checks the
+        // verified TransferRecord referencing this payment.
+        await _api.recordStandingPlanPayment(
+          widget.user.id,
+          payment.id,
+          result.transactionHash!,
+        );
+        if (!mounted) return;
         await showPfConfirmation(
           context,
-          outcome: PfFlowOutcome(
+          outcome: outcomeForPayment(
+            result,
             headline: 'Payment sent',
-            amount: signed.amount,
-            currency: signed.currency,
-            caption: payment.plan?.name != null ? 'Standing plan: ${payment.plan!.name}' : null,
-            reference: signed.id,
-            statusLabel: humanTransferStatus(signed.status),
-            statusTone: transferTone(signed.status),
+            amount: payment.amount,
+            assetCode: plan.assetCode,
+            caption: plan.name.isNotEmpty ? 'Standing plan: ${plan.name}' : null,
             methodLabel: 'Standing plan',
           ),
         );
@@ -170,7 +191,7 @@ class _StandingPlansScreenState extends State<StandingPlansScreen> {
                         compact: true,
                         icon: Icons.event_repeat_outlined,
                         title: 'No standing plans yet',
-                        message: 'Set up a recurring payment to a PayTag or wallet — '
+                        message: 'Set up a recurring payment to a PayTag or address — '
                             "you'll still sign each one when it's due.",
                       ),
                     ..._plans.map(_planCard),
@@ -194,7 +215,7 @@ class _StandingPlansScreenState extends State<StandingPlansScreen> {
           const SizedBox(height: 4),
           const Text(
             "Marked due on schedule, but never sent without you signing it "
-            '— there’s no way to pre-authorize a debit on BMONI.',
+            '— there is no way to pre-authorize a debit on Stellar.',
             style: TextStyle(color: PfColors.inkMuted, fontSize: 12.5, height: 1.45),
           ),
           const SizedBox(height: 14),
@@ -207,7 +228,7 @@ class _StandingPlansScreenState extends State<StandingPlansScreen> {
             controller: _recipientController,
             decoration: const InputDecoration(
               labelText: 'Recipient',
-              hintText: '@paytag or a raw bmoniUserId',
+              hintText: '@paytag or a Stellar address (G…)',
             ),
           ),
           const SizedBox(height: 10),
@@ -225,13 +246,12 @@ class _StandingPlansScreenState extends State<StandingPlansScreen> {
               SizedBox(
                 width: 110,
                 child: DropdownButtonFormField<String>(
-                  initialValue: _currency,
-                  decoration: const InputDecoration(labelText: 'Currency'),
+                  initialValue: _assetCode,
+                  decoration: const InputDecoration(labelText: 'Asset'),
                   items: const [
-                    DropdownMenuItem(value: 'NGN', child: Text('NGN')),
-                    DropdownMenuItem(value: 'USD', child: Text('USD')),
+                    DropdownMenuItem(value: 'XLM', child: Text('XLM')),
                   ],
-                  onChanged: (v) => setState(() => _currency = v!),
+                  onChanged: (v) => setState(() => _assetCode = v!),
                 ),
               ),
             ],
@@ -261,6 +281,8 @@ class _StandingPlansScreenState extends State<StandingPlansScreen> {
   Widget _planCard(StandingPlan plan) {
     final due = _duePaymentsByPlan[plan.id] ?? [];
     final isPaused = plan.status == 'PAUSED';
+    final destination =
+        plan.toPayTag != null ? '@${plan.toPayTag}' : shortRef(plan.toPublicKey ?? '');
     return PfPanel(
       margin: const EdgeInsets.only(bottom: 12),
       child: Column(
@@ -278,8 +300,8 @@ class _StandingPlansScreenState extends State<StandingPlansScreen> {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      '${formatMoney(plan.amount, plan.currency)} · ${plan.frequency.toLowerCase()} '
-                      '· to ${plan.toPayTag != null ? '@${plan.toPayTag}' : plan.toBmoniUserId}',
+                      '${formatMoney(plan.amount, plan.assetCode)} · ${plan.frequency.toLowerCase()} '
+                      '· to $destination',
                       style: const TextStyle(color: PfColors.inkMuted, fontSize: 12.5),
                     ),
                   ],
@@ -295,7 +317,7 @@ class _StandingPlansScreenState extends State<StandingPlansScreen> {
           Row(
             children: [
               Text(
-                'Total paid: ${formatMoney(plan.totalPaid, plan.currency)}',
+                'Total paid: ${formatMoney(plan.totalPaid, plan.assetCode)}',
                 style: const TextStyle(color: PfColors.inkFaint, fontSize: 12),
               ),
               const Spacer(),
@@ -314,7 +336,7 @@ class _StandingPlansScreenState extends State<StandingPlansScreen> {
                   children: [
                     Expanded(
                       child: Text(
-                        '${formatMoney(p.amount, plan.currency)} due',
+                        '${formatMoney(p.amount, plan.assetCode)} due',
                         style: const TextStyle(color: PfColors.ink, fontSize: 13, fontWeight: FontWeight.w600),
                       ),
                     ),

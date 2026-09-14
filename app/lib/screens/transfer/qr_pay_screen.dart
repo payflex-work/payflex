@@ -22,13 +22,14 @@ import '../../widgets/pf_flow.dart';
 import '../../widgets/pf_mark.dart';
 import '../../widgets/pf_motion.dart';
 import '../../widgets/pf_states.dart';
-import '../../widgets/pin_prompt.dart';
-import 'send_money_screen.dart' show humanTransferStatus, transferTone;
 
-/// QR Pay Screen with support for:
-/// 1. Standard HMAC-signed online QR tokens.
-/// 2. Generative animated fountain-coded QR streaming (real optical transport).
-/// 3. Offline Reserve payments and device-signed confirmation loop.
+/// QR Pay with support for:
+/// 1. Standard HMAC-signed online QR tokens (the token carries the
+///    recipient's Stellar public key; the payer builds and signs the
+///    payment on-device).
+/// 2. Generative animated fountain-coded QR streaming (real optical
+///    transport for the offline Reserve protocol — unchanged by the
+///    Stellar migration; its redemption settles on-chain).
 class QrPayScreen extends StatefulWidget {
   final AppUser user;
   const QrPayScreen({super.key, required this.user});
@@ -114,7 +115,7 @@ class _MyQrTabState extends State<_MyQrTab> {
   final _api = ApiClient();
   final _amountController = TextEditingController();
   final _noteController = TextEditingController();
-  String _currency = 'NGN';
+  String _assetCode = 'XLM';
   bool _offlineMode = true; // Default to the generative animated offline transport
   String? _onlineToken;
   FountainEncoder? _fountainEncoder;
@@ -160,7 +161,7 @@ class _MyQrTabState extends State<_MyQrTab> {
           merchantId: widget.user.id,
           merchantName: '${widget.user.firstName} ${widget.user.lastName}',
           amountMinorUnits: amountMinor,
-          currency: _currency,
+          currency: _assetCode,
           note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
           nonce: nonce,
           createdAt: now,
@@ -176,8 +177,8 @@ class _MyQrTabState extends State<_MyQrTab> {
       } else {
         final token = await _api.generateQr(
           widget.user.id,
-          amount: _amountController.text,
-          currency: _currency,
+          amount: amountText,
+          assetCode: _assetCode,
         );
         setState(() => _onlineToken = token);
       }
@@ -205,8 +206,8 @@ class _MyQrTabState extends State<_MyQrTab> {
               const SizedBox(height: 4),
               Text(
                 _offlineMode
-                    ? 'Generates a signed, loss-tolerant Animated Optical QR stream that can be scanned without an internet connection.'
-                    : 'Generates a standard online QR token that the payer redeems against BMONI.',
+                    ? 'Creates a live animated code that works with no signal — the payer\'s camera reads it straight off your screen.'
+                    : 'Creates a standard online code carrying your Stellar address — the payer signs the payment on their device.',
                 style: const TextStyle(color: PfColors.onNavyMuted, fontSize: 13.5, height: 1.45),
               ),
               const SizedBox(height: 16),
@@ -273,15 +274,14 @@ class _MyQrTabState extends State<_MyQrTab> {
                   ),
                   const SizedBox(width: 10),
                   DropdownButton<String>(
-                    value: _currency,
+                    value: _assetCode,
                     dropdownColor: PfColors.navyRaised2,
                     underline: const SizedBox.shrink(),
                     style: const TextStyle(color: PfColors.onNavy),
                     items: const [
-                      DropdownMenuItem(value: 'NGN', child: Text('NGN')),
-                      DropdownMenuItem(value: 'USD', child: Text('USD')),
+                      DropdownMenuItem(value: 'XLM', child: Text('XLM')),
                     ],
-                    onChanged: (v) => setState(() => _currency = v!),
+                    onChanged: (v) => setState(() => _assetCode = v!),
                   ),
                 ],
               ),
@@ -329,7 +329,7 @@ class _MyQrTabState extends State<_MyQrTab> {
                       borderRadius: BorderRadius.circular(PfRadius.pill),
                     ),
                     child: Text(
-                      '${formatMoney(_amountController.text, _currency)} · Device-Signed Request',
+                      '${formatMoney(_amountController.text, _assetCode)} · signed on this device',
                       style: const TextStyle(
                         color: PfColors.onNavy,
                         fontSize: 13.5,
@@ -340,7 +340,8 @@ class _MyQrTabState extends State<_MyQrTab> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Continuous fountain stream · Loss-tolerant · The payer can scan this without signal. When paid, scan their signed confirmation QR to close the loop.',
+                  'Streams continuously — the payer can scan it with no signal. '
+                  'When they\'ve paid, scan their confirmation code to close the loop.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: PfColors.onNavyFaint, fontSize: 12, height: 1.45),
                 ),
@@ -398,7 +399,7 @@ class _MyQrTabState extends State<_MyQrTab> {
                       borderRadius: BorderRadius.circular(PfRadius.pill),
                     ),
                     child: Text(
-                      '${formatMoney(_amountController.text, _currency)} request',
+                      '${formatMoney(_amountController.text, _assetCode)} request',
                       style: const TextStyle(
                         color: PfColors.onNavy,
                         fontSize: 13.5,
@@ -464,8 +465,6 @@ class _ScanToPayTabState extends State<_ScanToPayTab> {
   String? _pendingToken;
   bool _opening = false;
   double _fountainProgress = 0.0;
-  int _fountainChunksReceived = 0;
-  int _fountainTotalChunks = 0;
 
   Future<void> _onDetect(BarcodeCapture capture) async {
     if (_handled) return;
@@ -479,8 +478,6 @@ class _ScanToPayTabState extends State<_ScanToPayTab> {
       if (mounted) {
         setState(() {
           _fountainProgress = _fountainDecoder.progress;
-          _fountainChunksReceived = _fountainDecoder.solvedBlocksCount;
-          _fountainTotalChunks = _fountainDecoder.totalBlocks;
         });
       }
 
@@ -529,8 +526,6 @@ class _ScanToPayTabState extends State<_ScanToPayTab> {
         setState(() {
           _handled = false;
           _fountainProgress = 0.0;
-          _fountainChunksReceived = 0;
-          _fountainTotalChunks = 0;
         });
       }
     }
@@ -574,12 +569,12 @@ class _ScanToPayTabState extends State<_ScanToPayTab> {
       _opening = true;
     });
     try {
-      final proposal = await withRetry(() => _api.payQr(widget.user.id, token));
+      final payload = await withRetry(() => _api.decodeQr(token));
       if (!mounted) return;
       setState(() => _opening = false);
       await Navigator.of(context).push<bool>(
         MaterialPageRoute(
-          builder: (_) => _ConfirmPaymentScreen(user: widget.user, proposal: proposal),
+          builder: (_) => _ConfirmPaymentScreen(user: widget.user, qrPayload: payload),
         ),
       );
     } on OfflineException catch (e) {
@@ -673,26 +668,20 @@ class _ScanToPayTabState extends State<_ScanToPayTab> {
                     children: [
                       const Icon(Icons.stream_rounded, color: PfColors.emerald, size: 18),
                       const SizedBox(width: 8),
-                      Text(
-                        'Assembling Optical Fountain: $_fountainChunksReceived/$_fountainTotalChunks blocks (${(_fountainProgress * 100).toInt()}%)',
-                        style: const TextStyle(
-                          color: PfColors.onNavy,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
+                      Expanded(
+                        child: Text(
+                          'Reading their code · ${(_fountainProgress * 100).toInt()}% received',
+                          style: const TextStyle(
+                            color: PfColors.onNavy,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: LinearProgressIndicator(
-                      value: _fountainProgress,
-                      backgroundColor: PfColors.navyBorder,
-                      valueColor: const AlwaysStoppedAnimation<Color>(PfColors.emerald),
-                      minHeight: 6,
-                    ),
-                  ),
+                  PfProgressBar(value: _fountainProgress, height: 6),
                 ],
               ),
             ),
@@ -715,7 +704,7 @@ class _ScanToPayTabState extends State<_ScanToPayTab> {
                   Icon(Icons.center_focus_weak_rounded, color: PfColors.onNavyMuted, size: 16),
                   SizedBox(width: 8),
                   Text(
-                    'Point at any PayFlex QR or Animated Stream',
+                    'Point at a PayFlex code — works offline too.',
                     style: TextStyle(color: PfColors.onNavy, fontSize: 13),
                   ),
                 ],
@@ -745,17 +734,18 @@ class _ScanToPayTabState extends State<_ScanToPayTab> {
   }
 }
 
-/// Confirm and pay sheet. Supports both online BMONI proposals and offline Reserve requests.
+/// Confirm and pay sheet. Supports both online Stellar QR payloads and
+/// offline Reserve requests.
 class _ConfirmPaymentScreen extends StatefulWidget {
   final AppUser user;
-  final Proposal? proposal;
+  final QrPayload? qrPayload;
   final PaymentRequest? offlineRequest;
 
   const _ConfirmPaymentScreen({
     required this.user,
-    this.proposal,
+    this.qrPayload,
     this.offlineRequest,
-  }) : assert(proposal != null || offlineRequest != null);
+  }) : assert(qrPayload != null || offlineRequest != null);
 
   @override
   State<_ConfirmPaymentScreen> createState() => _ConfirmPaymentScreenState();
@@ -767,6 +757,7 @@ class _ConfirmPaymentScreenState extends State<_ConfirmPaymentScreen> {
   final _redemptionService = OfflineRedemptionService();
 
   bool _signing = false;
+  bool _allowanceChecked = false;
   String? _error;
   ReserveAllowance? _allowance;
 
@@ -779,8 +770,27 @@ class _ConfirmPaymentScreenState extends State<_ConfirmPaymentScreen> {
   Future<void> _checkAllowance() async {
     if (widget.offlineRequest != null) {
       final alw = await _reserveService.getActiveAllowance(widget.offlineRequest!.currency);
-      setState(() => _allowance = alw);
+      if (!mounted) return;
+      setState(() {
+        _allowance = alw;
+        _allowanceChecked = true;
+      });
     }
+  }
+
+  /// Opens the Offline Reserve sheet so a payer with no offline balance can
+  /// set one up mid-payment. When they close it, re-check the allowance so
+  /// the pay button becomes live without leaving the flow.
+  void _openReserveSetup() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: PfColors.navyRaised,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(PfRadius.lg)),
+      ),
+      builder: (_) => _OfflineReserveSheet(user: widget.user),
+    ).then((_) => _checkAllowance());
   }
 
   Future<void> _confirmAndPay() async {
@@ -812,29 +822,33 @@ class _ConfirmPaymentScreenState extends State<_ConfirmPaymentScreen> {
           ),
         );
       } else {
-        // Online BMONI proposal flow
-        final signed = await signAndSubmitTransfer(
+        // Online Stellar flow: sign on-device, submit, record.
+        final payload = widget.qrPayload!;
+        final result = await signAndSubmitTransfer(
           context,
           _api,
           widget.user.id,
-          widget.proposal!.id,
+          toPublicKey: payload.recipientStellarPublicKey,
+          amount: payload.amount,
+          assetCode: payload.assetCode,
+          assetIssuer: payload.assetIssuer,
+          kind: TransferKind.qrPay,
+          qrTokenRef: payload.recipientAppUserId,
         );
-        if (signed == null) {
+        if (!mounted) return;
+        if (result == null) {
           setState(() {
             _signing = false;
             _error = 'Signature cancelled — nothing was submitted.';
           });
           return;
         }
-        if (!mounted) return;
-        final outcome = PfFlowOutcome(
+        final outcome = outcomeForPayment(
+          result,
           headline: 'Paid',
-          amount: signed.amount,
-          currency: signed.currency,
-          caption: 'QR payment · ${shortRef(widget.proposal!.toUserId ?? widget.proposal!.toAddress ?? 'wallet')}',
-          reference: signed.id,
-          statusLabel: humanTransferStatus(signed.status),
-          statusTone: transferTone(signed.status),
+          amount: payload.amount,
+          assetCode: payload.assetCode,
+          caption: 'QR payment · ${shortRef(payload.recipientStellarPublicKey)}',
           methodLabel: 'QR Pay',
         );
         Navigator.of(context).pushReplacement(
@@ -856,11 +870,11 @@ class _ConfirmPaymentScreenState extends State<_ConfirmPaymentScreen> {
     final isOffline = widget.offlineRequest != null;
     final amount = isOffline
         ? (widget.offlineRequest!.amountMinorUnits / 100.0).toStringAsFixed(2)
-        : widget.proposal!.amount;
-    final currency = isOffline ? widget.offlineRequest!.currency : widget.proposal!.currency;
+        : widget.qrPayload!.amount;
+    final currency = isOffline ? widget.offlineRequest!.currency : widget.qrPayload!.assetCode;
     final recipient = isOffline
         ? (widget.offlineRequest!.merchantName ?? shortRef(widget.offlineRequest!.merchantId))
-        : shortRef(widget.proposal!.toUserId ?? widget.proposal!.toAddress ?? 'wallet');
+        : shortRef(widget.qrPayload!.recipientStellarPublicKey);
 
     return Theme(
       data: PayFlexTheme.dark,
@@ -922,7 +936,9 @@ class _ConfirmPaymentScreenState extends State<_ConfirmPaymentScreen> {
                             children: [
                               _ConfirmRow(
                                 label: 'Method',
-                                value: isOffline ? 'Offline Reserve (Device-Signed)' : 'QR Pay (BMONI)',
+                                value: isOffline
+                                    ? 'Offline — signed on this device'
+                                    : 'QR Pay · Stellar',
                               ),
                               const SizedBox(height: 10),
                               _ConfirmRow(label: 'Amount', value: formatMoney(amount, currency)),
@@ -935,7 +951,9 @@ class _ConfirmPaymentScreenState extends State<_ConfirmPaymentScreen> {
                               const SizedBox(height: 10),
                               _ConfirmRow(
                                 label: 'Reference',
-                                value: shortRef(isOffline ? widget.offlineRequest!.requestId : widget.proposal!.id),
+                                value: shortRef(isOffline
+                                    ? widget.offlineRequest!.requestId
+                                    : widget.qrPayload!.recipientStellarPublicKey),
                               ),
                             ],
                           ),
@@ -956,14 +974,28 @@ class _ConfirmPaymentScreenState extends State<_ConfirmPaymentScreen> {
                                 Expanded(
                                   child: Text(
                                     _allowance != null
-                                        ? 'Reserve available: ${formatMoney((_allowance!.remainingAmountMinorUnits / 100.0).toStringAsFixed(2), _allowance!.currency)}'
-                                        : 'Checking reserve allowance…',
+                                        ? 'Offline balance available: ${formatMoney((_allowance!.remainingAmountMinorUnits / 100.0).toStringAsFixed(2), _allowance!.currency)}'
+                                        : _allowanceChecked
+                                            ? 'No offline balance set aside yet.'
+                                            : 'Checking your offline balance…',
                                     style: const TextStyle(color: PfColors.onNavy, fontSize: 12.5),
                                   ),
                                 ),
                               ],
                             ),
                           ),
+                          // Nothing to pay from: offer the setup right here
+                          // instead of dead-ending (the sheet was previously
+                          // only reachable via the shield icon).
+                          if (_allowance == null && _allowanceChecked) ...[
+                            const SizedBox(height: 12),
+                            PfSecondaryButton(
+                              label: 'Set aside an offline balance',
+                              icon: Icons.shield_outlined,
+                              onPressed: _openReserveSetup,
+                              height: 48,
+                            ),
+                          ],
                         ],
                         if (_error != null) ...[
                           const SizedBox(height: 16),
@@ -975,100 +1007,14 @@ class _ConfirmPaymentScreenState extends State<_ConfirmPaymentScreen> {
                 ),
                 const SizedBox(height: 16),
                 PfPrimaryButton(
-                  label: isOffline ? 'Authorize offline payment' : 'Confirm & pay',
+                  label: isOffline
+                      ? (_allowance == null && _allowanceChecked
+                          ? 'No offline balance — set one up first'
+                          : 'Authorize offline payment')
+                      : 'Confirm & pay',
                   icon: Icons.north_east_rounded,
                   busy: _signing,
                   onPressed: _signing ? null : _confirmAndPay,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Screen broadcasting the signed confirmation back to the receiver via animated QR.
-class _OfflineConfirmationBroadcastScreen extends StatelessWidget {
-  final PaymentConfirmation confirmation;
-  final FountainEncoder encoder;
-
-  const _OfflineConfirmationBroadcastScreen({
-    required this.confirmation,
-    required this.encoder,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final amount = (confirmation.amountMinorUnits / 100.0).toStringAsFixed(2);
-    final outcome = PfFlowOutcome(
-      headline: 'Payment verified',
-      amount: amount,
-      currency: confirmation.currency,
-      caption: 'Offline Reserve · Settlement pending with BMONI',
-      reference: confirmation.confirmationId,
-      statusLabel: 'Settlement pending',
-      statusTone: PfTone.info,
-      methodLabel: 'Offline Reserve',
-    );
-
-    return Theme(
-      data: PayFlexTheme.dark,
-      child: Scaffold(
-        backgroundColor: Colors.transparent, // reveal PfBackground waves
-        appBar: AppBar(
-          title: const Text('Payment verified'),
-          backgroundColor: Colors.transparent,
-          leading: IconButton(
-            icon: const Icon(Icons.close_rounded),
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-        ),
-        body: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(PfSpace.xl),
-            child: Column(
-              children: [
-                Center(
-                  child: AnimatedOpticalQr(
-                    encoder: encoder,
-                    size: 200,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: PfColors.navyRaised2,
-                    borderRadius: BorderRadius.circular(PfRadius.pill),
-                  ),
-                  child: const Text(
-                    'Signed Confirmation Stream',
-                    style: TextStyle(
-                      color: PfColors.emerald,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                const Text(
-                  'Show this animated QR code to the receiver so their device can verify and record your payment.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: PfColors.onNavyMuted, fontSize: 13, height: 1.4),
-                ),
-                const SizedBox(height: 24),
-                PfSecondaryButton(
-                  label: 'View receipt & done',
-                  icon: Icons.receipt_long_outlined,
-                  onPressed: () {
-                    Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(
-                        builder: (_) => PfConfirmationScreen(outcome: outcome, receipt: outcome),
-                      ),
-                    );
-                  },
                 ),
               ],
             ),
@@ -1109,6 +1055,96 @@ class _ConfirmRow extends StatelessWidget {
   }
 }
 
+/// Screen broadcasting the signed confirmation back to the receiver via animated QR.
+class _OfflineConfirmationBroadcastScreen extends StatelessWidget {
+  final PaymentConfirmation confirmation;
+  final FountainEncoder encoder;
+
+  const _OfflineConfirmationBroadcastScreen({
+    required this.confirmation,
+    required this.encoder,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final amount = (confirmation.amountMinorUnits / 100.0).toStringAsFixed(2);
+    final outcome = PfFlowOutcome(
+      headline: 'Payment verified',
+      amount: amount,
+      currency: confirmation.currency,
+      caption: "Payment confirmed — it'll settle on Stellar when you're back online",
+      reference: confirmation.confirmationId,
+      statusLabel: 'Verified · settlement pending',
+      statusTone: PfTone.info,
+      methodLabel: 'Offline payment',
+    );
+
+    return Theme(
+      data: PayFlexTheme.dark,
+      child: Scaffold(
+        backgroundColor: Colors.transparent, // reveal PfBackground waves
+        appBar: AppBar(
+          title: const Text('Payment verified'),
+          backgroundColor: Colors.transparent,
+          leading: IconButton(
+            icon: const Icon(Icons.close_rounded),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ),
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(PfSpace.xl),
+            child: Column(
+              children: [
+                Center(
+                  child: AnimatedOpticalQr(
+                    encoder: encoder,
+                    size: 200,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: PfColors.navyRaised2,
+                    borderRadius: BorderRadius.circular(PfRadius.pill),
+                  ),
+                  child: const Text(
+                    'Signed confirmation · streaming live',
+                    style: TextStyle(
+                      color: PfColors.emerald,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Show this to the receiver — their device verifies your payment on the spot, no internet needed.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: PfColors.onNavyMuted, fontSize: 13, height: 1.4),
+                ),
+                const SizedBox(height: 24),
+                PfSecondaryButton(
+                  label: 'View receipt & done',
+                  icon: Icons.receipt_long_outlined,
+                  onPressed: () {
+                    Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(
+                        builder: (_) => PfConfirmationScreen(outcome: outcome, receipt: outcome),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Offline Reserve management sheet.
 class _OfflineReserveSheet extends StatefulWidget {
   final AppUser user;
@@ -1122,7 +1158,7 @@ class _OfflineReserveSheetState extends State<_OfflineReserveSheet> {
   final _reserveService = OfflineReserveService();
   final _redemptionService = OfflineRedemptionService();
   final _amountController = TextEditingController(text: '20000');
-  final String _currency = 'NGN';
+  final String _currency = 'XLM';
   ReserveAllowance? _allowance;
   List<OfflineTransactionRecord> _records = [];
   bool _busy = false;
@@ -1160,7 +1196,7 @@ class _OfflineReserveSheetState extends State<_OfflineReserveSheet> {
       final amountMinor = (double.parse(_amountController.text) * 100).round();
       final alw = await _reserveService.provisionAllowance(
         appUserId: widget.user.id,
-        bmoniUserId: widget.user.id,
+        stellarPublicKey: widget.user.stellarPublicKey ?? widget.user.id,
         amountMinorUnits: amountMinor,
         currency: _currency,
       );
@@ -1176,19 +1212,16 @@ class _OfflineReserveSheetState extends State<_OfflineReserveSheet> {
   }
 
   Future<void> _sync() async {
-    final pin = await promptForPin(context);
-    if (pin == null || pin.isEmpty) return;
-
     setState(() {
       _busy = true;
-      _statusMessage = 'Syncing offline transactions with BMONI…';
+      _statusMessage = 'Settling offline payments on Stellar…';
     });
 
     try {
       final result = await _redemptionService.syncAndRedeemAll(
         appUserId: widget.user.id,
         apiClient: ApiClient(),
-        pin: pin,
+        context: context,
       );
       await _load();
       setState(() {
@@ -1226,7 +1259,7 @@ class _OfflineReserveSheetState extends State<_OfflineReserveSheet> {
           ),
           const SizedBox(height: 6),
           const Text(
-            'Pre-authorize spendable balance while online to make device-signed offline payments when disconnected.',
+            'Set aside an offline balance while you have signal — then keep paying even when you don\'t. Every payment is signed on this device.',
             style: TextStyle(color: PfColors.onNavyMuted, fontSize: 13, height: 1.4),
           ),
           const SizedBox(height: 16),

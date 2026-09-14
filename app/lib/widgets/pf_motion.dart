@@ -84,6 +84,7 @@ class _PfCountUpMoneyState extends State<PfCountUpMoney>
   late final AnimationController _controller;
   late final Animation<double> _anim;
   late double _target;
+  double _start = 0; // value the current animation starts from
   bool _done = false;
 
   @override
@@ -106,9 +107,21 @@ class _PfCountUpMoneyState extends State<PfCountUpMoney>
   void didUpdateWidget(PfCountUpMoney old) {
     super.didUpdateWidget(old);
     if (old.amount != widget.amount) {
+      // Glide from the currently displayed value to the new one — never
+      // re-run the from-zero reveal on a refresh (design brief: the
+      // count-up is a once-per-session moment, not a repeated one).
+      final previous = _displayedValue();
       _target = parseAmount(widget.amount);
+      if ((_target - previous).abs() < 0.005) return;
+      _start = previous;
+      _done = false;
       _controller.forward(from: 0);
     }
+  }
+
+  double _displayedValue() {
+    if (_done) return _target;
+    return _start + (_target - _start) * _anim.value;
   }
 
   @override
@@ -129,7 +142,7 @@ class _PfCountUpMoneyState extends State<PfCountUpMoney>
     return AnimatedBuilder(
       animation: _anim,
       builder: (context, _) => Text(
-        formatValueOnly(_target * _anim.value),
+        formatValueOnly(_displayedValue()),
         style: widget.style,
         maxLines: 1,
       ),

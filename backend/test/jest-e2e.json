@@ -1,0 +1,11 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "..",
+  "testRegex": ".e2e-spec.ts$",
+  "transform": {
+    "^.+\\.(t|j)s$": "ts-jest",
+    "^.+\\.m?js$": ["babel-jest", { "presets": ["@babel/preset-env"] }]
+  },
+  "transformIgnorePatterns": ["node_modules/(?!(?:@stellar|stellar-base|js-xdr|uint8array-extras|@exodus|@noble)/)"],
+  "testEnvironment": "node"
+}

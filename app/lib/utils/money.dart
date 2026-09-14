@@ -2,11 +2,11 @@
 /// mirrors the backend's money.util.ts role on this side of the wire.
 ///
 /// Every amount in this codebase crosses the wire as a plain decimal
-/// string (BMONI balances are decimal strings; proposals carry decimal
-/// strings too), so all display formatting lives here: currency symbol,
-/// thousands separators, and a consistent 2-decimal rule app-wide. Never
-/// format an amount inline in a screen — it is exactly the kind of drift
-/// the build brief's §7 rule exists to prevent.
+/// string (Stellar amounts are decimal strings too), so all display
+/// formatting lives here: currency symbol, thousands separators, and a
+/// consistent 2-decimal rule app-wide. Never format an amount inline in
+/// a screen — it is exactly the kind of drift the build brief's §7 rule
+/// exists to prevent.
 library;
 
 String _prefixFor(String currencyCode) {

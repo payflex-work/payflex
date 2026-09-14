@@ -5,11 +5,11 @@ import '../../theme/payflex_tokens.dart';
 import '../../theme/payflex_theme.dart';
 import '../../widgets/pf_buttons.dart';
 import '../../widgets/pf_states.dart';
+import '../../widgets/pin_prompt.dart';
 
 /// Stellar payments are irreversible the instant they confirm on-chain —
-/// fundamentally different from BMONI's proposal/sign flow, which a
-/// treasury or counter-signer can still contest. This screen never lets
-/// that submit without an explicit, separate "this cannot be undone"
+/// there is no counter-signer to contest them. This screen never lets a
+/// send submit without an explicit, separate "this cannot be undone"
 /// confirmation naming the exact recipient address, and it checks the
 /// recipient's trustline BEFORE submitting for any non-native asset —
 /// Stellar rejects that payment on-chain otherwise, and this app should
@@ -73,16 +73,23 @@ class _StellarSendScreenState extends State<StellarSendScreen> {
 
       if (!mounted) return;
       final confirmed = await _confirmIrreversible(destination, amount);
+      if (!mounted) return;
       if (confirmed != true) {
         setState(() => _sending = false);
         return;
       }
 
-      final result = await widget.client.sendPayment(
+      final pin = await promptForPin(context);
+      if (pin == null || pin.isEmpty) {
+        setState(() => _sending = false);
+        return;
+      }
+      final result = await widget.client.sendPaymentWithPin(
         destinationPublicKey: destination,
         assetCode: _selectedAsset.displayCode,
         issuer: _selectedAsset.assetIssuer,
         amount: amount,
+        pin: pin,
       );
       setState(() => _result = result);
       if (!result.success) {

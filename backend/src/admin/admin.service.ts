@@ -6,46 +6,40 @@ import { PrismaService } from '../prisma/prisma.service';
  * plus the one piece of real admin authority this app needs today:
  * promoting/demoting another user's admin flag. Deliberately narrow —
  * no user suspension, no KYC override, no data mutation beyond the admin
- * flag itself. Expanding this needs a real product decision, not a
- * guess; see the root README's "Not built" section.
+ * flag itself. Expanding this needs a real product decision, not a guess;
+ * see the root README's "Not built" section.
  */
 @Injectable()
 export class AdminService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getStats() {
-    const [
-      totalUsers,
-      totalAgents,
-      totalAdmins,
-      totalSafeboxes,
-      loansByStatus,
-      totalSavingsGoals,
-      totalSplitBills,
-      totalClaimableLinks,
-      totalAgentTransactions,
-    ] = await Promise.all([
-      this.prisma.appUser.count(),
-      this.prisma.appUser.count({ where: { isAgent: true } }),
-      this.prisma.appUser.count({ where: { isAdmin: true } }),
-      this.prisma.safebox.count(),
-      this.prisma.loanApplication.groupBy({ by: ['status'], _count: true }),
-      this.prisma.savingsGoal.count(),
-      this.prisma.splitBill.count(),
-      this.prisma.claimableLink.count({ where: { status: 'ESCROWED' } }),
-      this.prisma.agentTransaction.count(),
-    ]);
+    const [totalUsers, verifiedUsers, fiatCapableUsers, totalAdmins, totalSplitBills, totalLinks, activeStandingPlans] =
+      await Promise.all([
+        this.prisma.appUser.count(),
+        this.prisma.appUser.count({ where: { identityVerified: true } }),
+        this.prisma.appUser.count({ where: { fiatCapable: true } }),
+        this.prisma.appUser.count({ where: { isAdmin: true } }),
+        this.prisma.splitBill.count(),
+        this.prisma.linkRecord.count(),
+        this.prisma.standingPlan.count({ where: { status: 'ACTIVE' } }),
+      ]);
 
     return {
       totalUsers,
-      totalAgents,
+      identityVerifiedUsers: verifiedUsers,
+      fiatCapableUsers,
       totalAdmins,
-      totalSafeboxes,
-      loansByStatus: Object.fromEntries(loansByStatus.map((row) => [row.status, row._count])),
-      totalSavingsGoals,
       totalSplitBills,
-      pendingEscrowedLinks: totalClaimableLinks,
-      totalAgentTransactions,
+      totalSendViaLinks: totalLinks,
+      activeStandingPlans,
+      // Honest architectural note surfaced in the dashboard itself:
+      gateStatus: {
+        identityVerification: 'NOT CONFIGURED — no KYC provider plugged in (docs/fiat-kyc-gap.md)',
+        fiatRails: 'NOT CONFIGURED — no fiat provider plugged in (docs/fiat-kyc-gap.md)',
+        identityVerifiedUsers: verifiedUsers,
+        fiatCapableUsers,
+      },
     };
   }
 

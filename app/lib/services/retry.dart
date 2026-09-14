@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
-/// Distinguishes "you're offline / BMONI-or-our-backend is unreachable"
-/// from a real server-returned error (ApiException) — the two need very
+/// Distinguishes "you're offline / our-backend is unreachable" from a
+/// real server-returned error (ApiException) — the two need very
 /// different UI treatment (retry button vs. showing the actual message).
 class OfflineException implements Exception {
   final String message;

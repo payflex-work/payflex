@@ -1,55 +1,128 @@
-import 'package:bmoni_embedded_sdk/bmoni_embedded_sdk.dart';
+import 'dart:typed_data';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:stellar_flutter_sdk/stellar_flutter_sdk.dart';
+import '../protocol/crypto_utils.dart';
+import '../stellar/stellar_key_service.dart';
 
-/// Thin wrapper around bmoni_embedded_sdk. This is the ONLY place in the
-/// app allowed to touch the SDK — never generate keys or sign messages
-/// anywhere else. The private key never leaves the device; only public
-/// addresses and signatures cross into ApiClient calls.
+/// PIN-gated signing for the Stellar-only app.
+///
+/// The Stellar secret seed lives in the platform keychain/keystore
+/// (StellarKeyService). The PIN is NOT stored anywhere: only a salted
+/// SHA-256 verifier lives in SharedPreferences, and it is checked before
+/// every signing operation. The PIN gates the *use* of the key on this
+/// device — it never touches the key material itself, and it is never
+/// sent to the PayFlex backend (login signatures are produced on-device
+/// and verified server-side against the registered public key).
+///
+/// This is the ONLY place in the app allowed to turn a confirmed PIN into
+/// a signature. Never sign inline in a screen or another service.
 class WalletService {
-  /// Injected signer for tests that can't reach the real SDK (it needs a
-  /// provisioned on-device wallet and platform secure storage, neither of
-  /// which exist in a plain `flutter test` VM run). Must stay null in
-  /// production — every call falls back to the real BmoniEmbeddedSdk
-  /// behavior whenever it's unset, so this changes nothing shipped.
-  static Future<String> Function(String digestHex, String pin)? signDigestHook;
+  static const _pinVerifierKey = 'payflex.stellar.pinVerifier.v1';
+  static const _pinSaltKey = 'payflex.stellar.pinSalt.v1';
 
-  static void initialize() {
-    // 6-digit PIN, required before signMessage/deleteWallet — matches
-    // the "PIN-gated signing" requirement in the build brief.
-    BmoniEmbeddedSdk.initialize(pinLength: 6, requirePin: true);
+  /// Test-only injection point — SharedPreferences needs a platform
+  /// channel that isn't available under `flutter test`'s engine (same
+  /// reason StellarKeyService exposes secure-storage hooks). Null (the
+  /// default) means "use the real prefs."
+  static Future<Map<String, String>> Function(List<String> keys)? prefsReadHook;
+  static Future<void> Function(Map<String, String> values)? prefsWriteHook;
+
+  static Future<Map<String, String>> _read(List<String> keys) async {
+    if (prefsReadHook != null) return prefsReadHook!(keys);
+    final prefs = await SharedPreferences.getInstance();
+    return {for (final k in keys) k: prefs.getString(k) ?? ''};
   }
 
-  static Future<bool> hasWallet() => BmoniEmbeddedSdk.hasWallet();
+  static Future<void> _write(Map<String, String> values) async {
+    if (prefsWriteHook != null) return prefsWriteHook!(values);
+    final prefs = await SharedPreferences.getInstance();
+    for (final entry in values.entries) {
+      await prefs.setString(entry.key, entry.value);
+    }
+  }
 
-  static Future<String?> currentAddress() => BmoniEmbeddedSdk.walletAddress();
+  /// True once a PIN has been set on this device (and therefore once a
+  /// Stellar keypair exists to gate — both are created together).
+  static Future<bool> hasPin() async {
+    final stored = await _read([_pinVerifierKey]);
+    final verifier = stored[_pinVerifierKey];
+    return verifier != null && verifier.isNotEmpty;
+  }
 
-  /// Provisions a new on-device EVM owner wallet. Throws
-  /// [BmoniSignerException] with [BmoniSignerErrorCode.walletAlreadyExists]
-  /// if one already exists on this device — callers should check
-  /// [hasWallet] first rather than relying on the exception for control
-  /// flow.
-  static Future<String> provisionWallet() => BmoniEmbeddedSdk.initWallet();
+  /// True once the device holds a Stellar keypair (the thing the PIN gates).
+  static Future<bool> hasWallet() => StellarKeyService.hasOptedIn();
 
-  static Future<bool> hasPin() => BmoniEmbeddedSdk.hasPin();
+  /// The registered public key (G…), or null if no keypair exists yet.
+  static Future<String?> currentAddress() async {
+    if (!await hasWallet()) return null;
+    return (await StellarKeyService.getOrCreateKeyPair()).accountId;
+  }
 
-  static Future<void> setPin(String pin) => BmoniEmbeddedSdk.setPin(pin);
+  /// One-time setup: generates the on-device Stellar keypair (idempotent)
+  /// and sets the PIN that gates every future signature. Throws if a PIN
+  /// already exists — changing a PIN is a separate, deliberate flow.
+  static Future<String> provisionWallet(String pin) async {
+    if (pin.length != 6 || int.tryParse(pin) == null) {
+      throw const FormatException('PIN must be exactly 6 digits.');
+    }
+    if (await hasPin()) {
+      throw StateError('A PIN is already set on this device.');
+    }
+    final keyPair = await StellarKeyService.getOrCreateKeyPair();
+    await _storePinVerifier(pin);
+    return keyPair.accountId;
+  }
 
-  /// Signs [message] (the raw text of a BMONI owner-proof challenge) with
-  /// EIP-191 `personal_sign`, gated by [pin]. This is the signature that
-  /// gets submitted back to the backend as `ownerProofSignature`.
-  static Future<String> signChallenge(String message, String pin) =>
-      BmoniEmbeddedSdk.signMessage(message, pin: pin);
+  /// Sets the PIN verifier for the first time.
+  static Future<void> setPin(String pin) async {
+    if (await hasPin()) {
+      throw StateError('A PIN is already set — changing it is a separate flow.');
+    }
+    await _storePinVerifier(pin);
+  }
 
-  /// Signs a pre-computed 32-byte digest directly — no prefix, no
-  /// additional hashing. This is what a BMONI transfer proposal's
-  /// `signingPayloadHash` (from GET sign-payload) needs: confirmed live
-  /// against the sandbox that BMONI wants a raw ECDSA signature over that
-  /// exact hash, NOT the EIP-712 hash of the `typedData` object it's
-  /// packaged alongside — signing the properly-computed EIP-712 digest
-  /// was tested and rejected ("signature does not match your registered
-  /// owner address"). Do not run `digestHex` through any additional hashing
-  /// before calling this.
-  static Future<String> signDigest(String digestHex, String pin) {
-    if (signDigestHook != null) return signDigestHook!(digestHex, pin);
-    return BmoniEmbeddedSdk.signTransactionHash(digestHex, pin: pin);
+  static Future<void> _storePinVerifier(String pin) async {
+    final salt = CryptoUtils.bytesToHex(CryptoUtils.generateEd25519Seed());
+    final verifier = CryptoUtils.sha256Hex('$salt:$pin');
+    await _write({_pinSaltKey: salt, _pinVerifierKey: verifier});
+  }
+
+  /// Verifies [pin] against the stored verifier. No network, no backend.
+  static Future<bool> verifyPin(String pin) async {
+    final stored = await _read([_pinSaltKey, _pinVerifierKey]);
+    final salt = stored[_pinSaltKey];
+    final verifier = stored[_pinVerifierKey];
+    if (salt == null || salt.isEmpty || verifier == null || verifier.isEmpty) {
+      return false;
+    }
+    return CryptoUtils.sha256Hex('$salt:$pin') == verifier;
+  }
+
+  /// Signs [message] with the device's Stellar Ed25519 key after checking
+  /// [pin]. This is the login signature: the backend verifies it against
+  /// the user's registered public key. Throws on a wrong PIN.
+  static Future<String> signChallenge(String message, String pin) async {
+    if (!await verifyPin(pin)) {
+      throw StateError('Incorrect PIN.');
+    }
+    final keyPair = await StellarKeyService.getOrCreateKeyPair();
+    final signature = keyPair.sign(Uint8List.fromList(CryptoUtils.utf8Bytes(message)));
+    return CryptoUtils.bytesToHex(signature);
+  }
+
+  /// Signs the raw bytes of an XDR transaction envelope with the device's
+  /// Stellar key after checking [pin] — the one gateway for payment
+  /// signing. [network] must match the network the transaction was built
+  /// for (the StellarClient owns that knowledge). Throws on a wrong PIN.
+  static Future<void> signTransaction(
+    Transaction transaction,
+    String pin,
+    Network network,
+  ) async {
+    if (!await verifyPin(pin)) {
+      throw StateError('Incorrect PIN.');
+    }
+    final keyPair = await StellarKeyService.getOrCreateKeyPair();
+    transaction.sign(keyPair, network);
   }
 }

@@ -1,3 +1,10 @@
+/// Safebox models for the Soroban escrow contract (backend/contracts/
+/// safebox). Roles come from CHAIN state (owner + admin list), not from a
+/// database; the ledger comes from the contract's own storage. There is
+/// deliberately no `proposalId`/treasury-signing concept anymore — every
+/// ledger entry is an on-chain fact.
+library;
+
 enum SafeboxRole { owner, admin, member }
 
 extension SafeboxRoleExtension on SafeboxRole {
@@ -16,141 +23,45 @@ extension SafeboxRoleExtension on SafeboxRole {
   bool get isOwner => this == SafeboxRole.owner;
 }
 
-enum SafeboxStatus { active, closed }
-
 enum SafeboxTxType { contribution, withdrawal }
 
-class SafeboxMember {
-  final String id;
-  final String safeboxId;
-  final String userId;
-  final String name;
-  final SafeboxRole role;
-  final DateTime joinedAt;
-
-  const SafeboxMember({
-    required this.id,
-    required this.safeboxId,
-    required this.userId,
-    required this.name,
-    required this.role,
-    required this.joinedAt,
-  });
-
-  factory SafeboxMember.fromJson(Map<String, dynamic> json) {
-    SafeboxRole parsedRole = SafeboxRole.member;
-    final rStr = (json['role'] as String? ?? 'MEMBER').toUpperCase();
-    if (rStr == 'OWNER') parsedRole = SafeboxRole.owner;
-    if (rStr == 'ADMIN') parsedRole = SafeboxRole.admin;
-
-    return SafeboxMember(
-      id: json['id'] ?? '',
-      safeboxId: json['safeboxId'] ?? '',
-      userId: json['userId'] ?? '',
-      name: json['name'] ?? json['userId'] ?? 'Member',
-      role: parsedRole,
-      joinedAt: json['joinedAt'] != null
-          ? DateTime.parse(json['joinedAt'])
-          : DateTime.now(),
-    );
-  }
-}
-
-class Safebox {
-  final String id;
-  final String name;
-  final String description;
-  final String ownerId;
-  final double? targetAmount;
-  final double currentBalance;
-  final SafeboxStatus status;
-  final DateTime createdAt;
-  final SafeboxRole userRole;
-
-  const Safebox({
-    required this.id,
-    required this.name,
-    required this.description,
-    required this.ownerId,
-    this.targetAmount,
-    required this.currentBalance,
-    required this.status,
-    required this.createdAt,
-    required this.userRole,
-  });
-
-  double get progressPercentage {
-    if (targetAmount == null || targetAmount! <= 0) return 0.0;
-    return (currentBalance / targetAmount!).clamp(0.0, 1.0);
-  }
-
-  factory Safebox.fromJson(Map<String, dynamic> json, {SafeboxRole role = SafeboxRole.member}) {
-    return Safebox(
-      id: json['id'] ?? '',
-      name: json['name'] ?? '',
-      description: json['description'] ?? '',
-      ownerId: json['ownerId'] ?? '',
-      targetAmount: json['targetAmount'] != null
-          ? (json['targetAmount'] as num).toDouble()
-          : null,
-      currentBalance: json['currentBalance'] != null
-          ? (json['currentBalance'] as num).toDouble()
-          : 0.0,
-      status: json['status'] == 'CLOSED' ? SafeboxStatus.closed : SafeboxStatus.active,
-      createdAt: json['createdAt'] != null
-          ? DateTime.parse(json['createdAt'])
-          : DateTime.now(),
-      userRole: role,
-    );
-  }
-}
-
+/// One entry of the contract's on-chain ledger (get_ledger), already
+/// decoded by SafeboxService/backend from the contract's i128 amounts.
 class SafeboxTransaction {
   final String id;
-  final String safeboxId;
-  final String userId;
-  final String userName;
   final SafeboxTxType type;
-  final double amount;
-  final String note;
+  final String memberPublicKey;
+  final String amount; // decimal string, contract precision
   final DateTime createdAt;
-  final double runningBalance;
-  // Set on a freshly-created CONTRIBUTION only — the id of the BMONI
-  // transfer proposal the member still needs to sign (see
-  // ApiClient.contributeSafebox and transfer_flow.dart). Withdrawals are
-  // already treasury-signed server-side by the time this returns, so
-  // this is always null for those.
-  final String? proposalId;
 
   const SafeboxTransaction({
     required this.id,
-    required this.safeboxId,
-    required this.userId,
-    required this.userName,
     required this.type,
+    required this.memberPublicKey,
     required this.amount,
-    required this.note,
     required this.createdAt,
-    required this.runningBalance,
-    this.proposalId,
   });
 
-  factory SafeboxTransaction.fromJson(Map<String, dynamic> json) {
+  /// Builds from the chain ledger row shape:
+  /// `{ entry_type, member, amount, created_at }` (index used as id).
+  factory SafeboxTransaction.fromChain(Map<String, dynamic> json, {int index = 0}) {
+    final isWithdrawal =
+        (json['entry_type'] as String? ?? '').toLowerCase() == 'withdrawal';
+    final ts = (json['created_at'] as num? ?? 0).toInt();
     return SafeboxTransaction(
-      id: json['id'] ?? '',
-      safeboxId: json['safeboxId'] ?? '',
-      userId: json['userId'] ?? '',
-      userName: json['userName'] ?? json['userId'] ?? 'User',
-      type: json['type'] == 'WITHDRAWAL'
-          ? SafeboxTxType.withdrawal
-          : SafeboxTxType.contribution,
-      amount: (json['amount'] as num? ?? 0.0).toDouble(),
-      note: json['note'] ?? '',
-      createdAt: json['createdAt'] != null
-          ? DateTime.parse(json['createdAt'])
+      id: '${json['member'] ?? ''}-$ts-$index',
+      type: isWithdrawal ? SafeboxTxType.withdrawal : SafeboxTxType.contribution,
+      memberPublicKey: json['member'] as String? ?? '',
+      amount: json['amount'] as String? ?? '0',
+      createdAt: ts > 0
+          ? DateTime.fromMillisecondsSinceEpoch(ts * 1000)
           : DateTime.now(),
-      runningBalance: (json['runningBalance'] as num? ?? 0.0).toDouble(),
-      proposalId: json['proposalId'] as String?,
     );
   }
+}
+
+/// Shortens a public key for display: `GABCD…WXYZ`.
+String shortPublicKey(String pk) {
+  if (pk.length <= 12) return pk;
+  return '${pk.substring(0, 5)}…${pk.substring(pk.length - 4)}';
 }

@@ -35,7 +35,7 @@ class AboutScreen extends StatelessWidget {
             const SizedBox(height: PfSpace.xl),
 
             const Text(
-              'Mobile-first microfinance, built on your own wallet',
+              'Non-custodial payments, built on your own wallet',
               style: TextStyle(
                 color: PfColors.onNavy,
                 fontSize: 18,
@@ -45,10 +45,11 @@ class AboutScreen extends StatelessWidget {
             ),
             const SizedBox(height: PfSpace.sm),
             const Text(
-              'PayFlex is a mobile wallet that moves the way you do. '
-              'Savings, loans and agent services are PayFlex layers on top — '
-              'but the money always settles through your own smart wallet, '
-              'signed on this device with your PIN.',
+              'PayFlex is a non-custodial wallet that moves the way you do. '
+              'You ARE a Stellar account — the keypair lives on this device, '
+              'and every payment is signed here with your PIN and settled '
+              'on-chain. Fiat on/off-ramps and identity verification are '
+              'deliberately not implemented yet (see docs/fiat-kyc-gap.md).',
               style: TextStyle(
                 color: PfColors.onNavyMuted,
                 fontSize: 13.5,
@@ -84,13 +85,13 @@ class _PillarList extends StatelessWidget {
   Widget build(BuildContext context) {
     const pillars = <(IconData, String, String)>[
       (Icons.bolt_rounded, 'Send money',
-          'Instant transfers, QR Pay and PayTag — receipts for every move.'),
-      (Icons.savings_outlined, 'Save more',
-          'Goal-based savings that track progress, not just balances.'),
-      (Icons.credit_card_outlined, 'Spend freely',
-          'Virtual cards and everyday payments, signed with your PIN.'),
+          'Instant transfers, QR Pay and PayTag — settled on Stellar.'),
+      (Icons.savings_outlined, 'Save on-chain',
+          'Safebox: a group escrow contract, enforced by the chain.'),
+      (Icons.key_outlined, 'Own your key',
+          'Non-custodial: the secret never leaves this device.'),
       (Icons.groups_outlined, 'Grow together',
-          'Agent cash-in/out, community savings and shared bills.'),
+          'Shared bills, payment links and standing plans.'),
     ];
 
     return Column(
@@ -159,16 +160,16 @@ class _FactsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const rows = <(IconData, String, String)>[
-      (Icons.tag_rounded, 'Version', 'PayFlex 0.1.0'),
+      (Icons.tag_rounded, 'Version', 'PayFlex 0.2.0'),
       (
         Icons.account_balance_wallet_outlined,
-        'Rails',
-        'BMONI smart-wallet · Stellar (optional parallel rail)'
+        'Rail',
+        'Stellar — the only payment rail, non-custodial'
       ),
       (
         Icons.support_agent_rounded,
-        'Support',
-        'PayFlex agents can cash you in/out and raise issues for you.'
+        'Honest gaps',
+        'Fiat on/off-ramp, KYC, cards, agents: not implemented (docs/fiat-kyc-gap.md).'
       ),
     ];
 
