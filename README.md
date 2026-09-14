@@ -9,9 +9,14 @@
   <a href="https://github.com/payflex-work/payflex/actions/workflows/backend-docker.yml">
     <img src="https://github.com/payflex-work/payflex/actions/workflows/backend-docker.yml/badge.svg" alt="Backend Docker">
   </a>
+  <a href="https://nextgen-4.gitbook.io/nextgen-docs/backend">
+    <img src="https://img.shields.io/badge/docs-GitBook-blue" alt="Documentation">
+  </a>
 </p>
 
 # PayFlex
+
+📖 **Documentation**: [NextGen GitBook Docs](https://nextgen-4.gitbook.io/nextgen-docs/backend)
 
 > **Honest status: this is a working Stellar **testnet** application, not a bank.**
 > Fiat on/off-ramps and identity verification (KYC) are **not implemented** —
@@ -87,6 +92,11 @@ credentials:
 options for later (a real anchor such as LINK/NGNC, or another regulated
 partner) are discussed without commitment in `/docs/fiat-kyc-gap.md`.
 
+## Documentation
+
+- **GitBook Documentation**: [https://nextgen-4.gitbook.io/nextgen-docs/backend](https://nextgen-4.gitbook.io/nextgen-docs/backend)
+- **Local Guides**: See the [`docs/`](docs/) directory for architecture, deployment, the fiat/KYC gap analysis, and Stellar deep-dives.
+
 ## Architecture
 
 ```
@@ -113,7 +123,7 @@ Two hard boundaries hold it together:
 cd backend
 npm install
 cp .env.example .env
-docker compose up -d           # Postgres for local dev
+docker compose up -d           # Postgres + Redis for local dev
 npx prisma migrate dev         # creates the schema (first run only)
 npm run start:dev              # http://localhost:3000
 npm test                       # e2e suites (includes the hard-gate test)
