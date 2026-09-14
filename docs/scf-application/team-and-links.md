@@ -36,7 +36,7 @@ submission asks for current traction explicitly; do not leave this generic.]**
 |---|---|
 | Public repository | **[FOUNDER INPUT NEEDED: confirm `github.com/payflex-work/payflex` is public (or will be before submission) — reviewers will verify claims against it]** |
 | Stellar docs set | **[FOUNDER INPUT NEEDED: confirm the `/docs/stellar/` set stays in-repo, or add the public GitBook URL if published separately]** |
-| Live demo | **[FOUNDER INPUT NEEDED: demo video URL and/or hosted testnet demo link if available — strongly recommended for the Open Track community vote]** |
+| Live demo | **Video is recorded and in-repo: `demo/payflex_offline_demo.mp4` (40s, offline payment → real testnet settlement; verification links in [`demo/README.md`](demo/README.md)). [FOUNDER INPUT NEEDED: upload to YouTube or Vimeo (unlisted works) and paste the URL here — the SCF submission form expects a hosted link, and a real demo video is strongly recommended for the Open Track community vote]** |
 | Website | **[FOUNDER INPUT NEEDED: product website URL, if one exists]** |
 | Contact | **[FOUNDER INPUT NEEDED: email and preferred contact (e.g. Discord handle in the Stellar Dev Discord), for SCF follow-up]** |
 | Social | **[FOUNDER INPUT NEEDED: X/Twitter, LinkedIn, or other profiles if the team uses them]** |

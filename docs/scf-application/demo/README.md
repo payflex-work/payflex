@@ -45,3 +45,5 @@ Stellar.**
   verification fields.
 - `sbs_offer_scan.png` / `sbs_payoff.png` are two-device side-by-side stills
   for slides.
+- Planning a literal two-physical-device recording (phones, airplane mode,
+  camera-to-camera)? Follow [`two-device-session-plan.md`](two-device-session-plan.md).
