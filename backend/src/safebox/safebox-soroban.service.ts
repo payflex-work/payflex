@@ -1,18 +1,26 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { IsOptional, IsString } from 'class-validator';
+import {
+  IsStellarContractId,
+  SanitizedText,
+} from '../common/validation/validators';
 import { PrismaService } from '../prisma/prisma.service';
 import { StellarService } from '../stellar/stellar.service';
 import { UsersService } from '../users/users.service';
 
+/**
+ * Product metadata attached to a DEPLOYED Soroban contract. contractId is
+ * validated as a real contract strkey (C…, checksum verified) before any
+ * chain read is attempted; name/description are sanitized and capped since
+ * they render on every member's screen.
+ */
 export class RegisterSafeboxDto {
-  @IsString()
+  @IsStellarContractId({ message: 'contractId must be a valid Soroban contract id (C…, checksum verified).' })
   contractId!: string;
 
-  @IsString()
+  @SanitizedText({ max: 50, min: 1 })
   name!: string;
 
-  @IsOptional()
-  @IsString()
+  @SanitizedText({ max: 200 })
   description?: string;
 }
 

@@ -16,6 +16,7 @@ import '../../theme/payflex_tokens.dart';
 import '../../theme/payflex_theme.dart';
 import '../../utils/format.dart';
 import '../../utils/money.dart';
+import '../../utils/validators.dart';
 import '../../widgets/animated_optical_qr.dart';
 import '../../widgets/pf_buttons.dart';
 import '../../widgets/pf_flow.dart';
@@ -138,10 +139,13 @@ class _MyQrTabState extends State<_MyQrTab> {
     });
 
     final amountText = _amountController.text.trim();
-    if (amountText.isEmpty || double.tryParse(amountText) == null || double.parse(amountText) <= 0) {
+    // Shared validator: specific message instead of a generic nudge, and
+    // the same Stellar amount rules the backend enforces.
+    final amountProblem = amountError(amountText);
+    if (amountProblem != null) {
       setState(() {
         _busy = false;
-        _error = 'Please enter a valid amount';
+        _error = amountProblem;
       });
       return;
     }

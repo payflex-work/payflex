@@ -6,6 +6,7 @@ import '../../services/transfer_flow.dart';
 import '../../theme/payflex_tokens.dart';
 import '../../theme/payflex_theme.dart';
 import '../../utils/money.dart';
+import '../../utils/validators.dart';
 import '../../widgets/pf_balance_card.dart';
 import '../../widgets/pf_buttons.dart';
 import '../../widgets/pf_flow.dart';
@@ -298,6 +299,17 @@ class _CreateSplitBillScreenState extends State<CreateSplitBillScreen> {
   String? _error;
 
   @override
+  void initState() {
+    super.initState();
+    _descriptionController.addListener(_revalidate);
+    _totalController.addListener(_revalidate);
+  }
+
+  void _revalidate() {
+    if (mounted) setState(() {});
+  }
+
+  @override
   void dispose() {
     _descriptionController.dispose();
     _totalController.dispose();
@@ -308,7 +320,49 @@ class _CreateSplitBillScreenState extends State<CreateSplitBillScreen> {
     super.dispose();
   }
 
+  String? get _descriptionError {
+    final text = _descriptionController.text.trim();
+    if (text.isEmpty || text.length <= 140) return null;
+    return 'Description must be at most 140 characters.';
+  }
+
+  String? get _totalError {
+    final text = _totalController.text.trim();
+    if (text.isEmpty) return null;
+    return amountError(text);
+  }
+
+  /// Pre-submit validation mirroring the backend's per-contributor checks:
+  /// valid tags/amounts, no duplicates, at least one contributor.
+  String? _validateContributors() {
+    if (_contributors.isEmpty) return 'Add at least one contributor.';
+    final seen = <String>{};
+    for (var i = 0; i < _contributors.length; i++) {
+      final c = _contributors[i];
+      final tag = c.payTagController.text.trim();
+      final share = c.shareController.text.trim();
+      if (tag.isEmpty) return 'Contributor ${i + 1}: enter a PayTag.';
+      if (!isValidPayTag(tag)) {
+        return 'Contributor ${i + 1}: PayTag must be 3-20 lowercase letters, digits or underscore.';
+      }
+      if (!seen.add('tag:$tag')) return 'Contributor ${i + 1}: duplicate PayTag.';
+      if (share.isEmpty) return 'Contributor ${i + 1}: enter their share.';
+      final shareErr = amountError(share);
+      if (shareErr != null) return 'Contributor ${i + 1}: $shareErr';
+    }
+    return null;
+  }
+
   Future<void> _create() async {
+    String? blockReason = _descriptionError ??
+        (_descriptionController.text.trim().isEmpty ? 'Describe what this bill is for.' : null) ??
+        _totalError ??
+        amountError(_totalController.text.trim()) ??
+        _validateContributors();
+    if (blockReason != null) {
+      setState(() => _error = blockReason);
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
@@ -316,14 +370,14 @@ class _CreateSplitBillScreenState extends State<CreateSplitBillScreen> {
     try {
       await _api.createSplitBill(
         widget.user.id,
-        description: _descriptionController.text,
+        description: _descriptionController.text.trim(),
         assetCode: _currency,
-        totalAmount: _totalController.text,
+        totalAmount: _totalController.text.trim(),
         contributors: _contributors
             .map((c) => (
-                  payTag: c.payTagController.text,
+                  payTag: c.payTagController.text.trim(),
                   publicKey: null,
-                  shareAmount: c.shareController.text,
+                  shareAmount: c.shareController.text.trim(),
                 ))
             .toList(),
       );
@@ -365,9 +419,12 @@ class _CreateSplitBillScreenState extends State<CreateSplitBillScreen> {
                   const SizedBox(height: 20),
                   TextField(
                     controller: _descriptionController,
-                    decoration: const InputDecoration(
+                    maxLength: 140,
+                    decoration: InputDecoration(
                       labelText: 'What is this for?',
                       hintText: 'e.g. Saturday dinner',
+                      errorText: _descriptionError,
+                      counterText: '',
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -376,8 +433,12 @@ class _CreateSplitBillScreenState extends State<CreateSplitBillScreen> {
                       Expanded(
                         child: TextField(
                           controller: _totalController,
-                          decoration: const InputDecoration(labelText: 'Total amount'),
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: InputDecoration(
+                            labelText: 'Total amount',
+                            errorText: _totalError,
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: false),
+                          inputFormatters: amountInputFormatters(),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -435,6 +496,7 @@ class _CreateSplitBillScreenState extends State<CreateSplitBillScreen> {
                                 labelText: '@PayTag',
                                 isDense: true,
                               ),
+                              inputFormatters: payTagInputFormatters(),
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -445,7 +507,8 @@ class _CreateSplitBillScreenState extends State<CreateSplitBillScreen> {
                                 labelText: 'Share',
                                 isDense: true,
                               ),
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: false),
+                              inputFormatters: amountInputFormatters(),
                             ),
                           ),
                           if (index > 0)

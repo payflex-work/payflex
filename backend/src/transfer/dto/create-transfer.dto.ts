@@ -1,4 +1,12 @@
-import { IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
+import { IsOptional } from 'class-validator';
+import {
+  IsStellarPublicKey,
+  IsStellarAmount,
+  IsStellarAssetCode,
+  IsPayTag,
+  ValidAssetPair,
+  SanitizedText,
+} from '../../common/validation/validators';
 
 /**
  * Exactly one of toPublicKey / toPayTag must be set — the controller
@@ -8,31 +16,32 @@ import { IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
  * records it via POST /users/:id/transfers/record where the backend
  * verifies the transaction on-chain before storing it.
  */
+@ValidAssetPair()
 export class CreateTransferDto {
   @IsOptional()
-  @IsString()
-  @Matches(/^G[A-Z2-7]{55}$/, { message: 'toPublicKey must be an Ed25519 account strkey.' })
+  @IsStellarPublicKey({ message: 'toPublicKey must be a valid Stellar Ed25519 account strkey (G…).' })
   toPublicKey?: string;
 
   @IsOptional()
-  @IsString()
+  @IsPayTag({ message: 'toPayTag must be 3-20 characters: lowercase letters, digits, underscore.' })
   toPayTag?: string;
 
-  /** Decimal string, e.g. "5.00" — NOT minor units. */
-  @IsString()
-  @IsNotEmpty()
+  /**
+   * Decimal string, e.g. "5.00" — NOT minor units. Validated as strictly
+   * positive, ≤7 decimals, ≤1e12 — matching Stellar's own amount rules so
+   * a bad value dies here with a clear message, not on Horizon.
+   */
+  @IsStellarAmount()
   amount!: string;
 
   /** "XLM" or an issued asset code (issued assets also need assetIssuer). */
-  @IsString()
-  @IsNotEmpty()
+  @IsStellarAssetCode()
   assetCode!: string;
 
   @IsOptional()
-  @IsString()
   assetIssuer?: string;
 
   @IsOptional()
-  @IsString()
+  @SanitizedText({ max: 200 })
   description?: string;
 }

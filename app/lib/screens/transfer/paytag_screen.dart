@@ -4,6 +4,7 @@ import '../../models/app_user.dart';
 import '../../services/api_client.dart';
 import '../../theme/payflex_tokens.dart';
 import '../../theme/payflex_theme.dart';
+import '../../utils/validators.dart';
 import '../../widgets/pf_buttons.dart';
 import '../../widgets/pf_motion.dart';
 import '../../widgets/pf_states.dart';
@@ -36,7 +37,19 @@ class _PayTagScreenState extends State<PayTagScreen> {
   @override
   void initState() {
     super.initState();
+    _tagController.addListener(_revalidate);
     _load();
+  }
+
+  void _revalidate() {
+    if (mounted) setState(() {});
+  }
+
+  /// Live inline format check — mirrors RegisterPayTagDto on the backend.
+  String? get _tagError {
+    final tag = _tagController.text.trim();
+    if (tag.isEmpty || isValidPayTag(tag)) return null;
+    return '3-20 lowercase letters, digits or underscore.';
   }
 
   Future<void> _load() async {
@@ -51,6 +64,11 @@ class _PayTagScreenState extends State<PayTagScreen> {
   }
 
   Future<void> _register() async {
+    final tag = _tagController.text.trim();
+    if (!isValidPayTag(tag)) {
+      setState(() => _error = 'PayTag must be 3-20 lowercase letters, digits or underscore.');
+      return;
+    }
     setState(() {
       _saving = true;
       _error = null;
@@ -168,11 +186,13 @@ class _PayTagScreenState extends State<PayTagScreen> {
                           ),
                         TextField(
                           controller: _tagController,
-                          decoration: const InputDecoration(
+                          inputFormatters: payTagInputFormatters(),
+                          decoration: InputDecoration(
                             prefixText: '@',
                             labelText: 'PayTag',
                             hintText: 'e.g. adaeze_92',
                             helperText: 'lowercase · 3–20 chars · letters, digits, underscore',
+                            errorText: _tagError,
                           ),
                         ),
                         const SizedBox(height: 16),

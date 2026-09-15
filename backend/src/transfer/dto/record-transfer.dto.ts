@@ -1,4 +1,12 @@
-import { IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
+import { IsOptional } from 'class-validator';
+import {
+  IsStellarPublicKey,
+  IsStellarTxHash,
+  IsStellarAmount,
+  IsStellarAssetCode,
+  ValidAssetPair,
+  SanitizedText,
+} from '../../common/validation/validators';
 
 /**
  * The app's report of a payment it has already built, signed on-device, and
@@ -7,53 +15,47 @@ import { IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
  * a TransferRecord is written. kind is one of TRANSFER | QR_PAY |
  * OFFLINE_REDEMPTION | SPLIT_BILL | STANDING_PLAN | LINK_CLAIM.
  */
+@ValidAssetPair()
 export class RecordTransferDto {
-  @IsString()
-  @IsNotEmpty()
+  @IsStellarTxHash({ message: 'stellarTxHash must be a 64-character lowercase hex transaction hash.' })
   stellarTxHash!: string;
 
-  @IsString()
-  @Matches(/^G[A-Z2-7]{55}$/, { message: 'fromPublicKey must be an Ed25519 account strkey.' })
+  @IsStellarPublicKey({ message: 'fromPublicKey must be a valid Stellar Ed25519 account strkey (G…).' })
   fromPublicKey!: string;
 
-  @IsString()
-  @Matches(/^G[A-Z2-7]{55}$/, { message: 'toPublicKey must be an Ed25519 account strkey.' })
+  @IsStellarPublicKey({ message: 'toPublicKey must be a valid Stellar Ed25519 account strkey (G…).' })
   toPublicKey!: string;
 
   /** Decimal string exactly as submitted on-chain, e.g. "5.0000000". */
-  @IsString()
-  @IsNotEmpty()
+  @IsStellarAmount()
   amount!: string;
 
-  @IsString()
-  @IsNotEmpty()
+  @IsStellarAssetCode()
   assetCode!: string;
 
   @IsOptional()
-  @IsString()
   assetIssuer?: string;
 
   @IsOptional()
-  @IsString()
-  kind?: string;
+  kind?: string; // membership of VALID_KINDS enforced in TransferService (clear message naming the allowed set)
 
   @IsOptional()
-  @IsString()
+  @SanitizedText({ max: 100 })
   qrTokenRef?: string;
 
   @IsOptional()
-  @IsString()
+  @SanitizedText({ max: 64 })
   splitBillId?: string;
 
   @IsOptional()
-  @IsString()
+  @SanitizedText({ max: 64 })
   standingPlanId?: string;
 
   @IsOptional()
-  @IsString()
+  @SanitizedText({ max: 100 })
   offlineAuthorizationId?: string;
 
   @IsOptional()
-  @IsString()
+  @SanitizedText({ max: 140 })
   memo?: string;
 }

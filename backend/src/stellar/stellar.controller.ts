@@ -31,6 +31,9 @@ export class StellarController {
 
   @Get('accounts/:publicKey/transactions')
   getTransactions(@Param('publicKey') publicKey: string, @Query('limit') limit?: string) {
-    return this.stellar.getTransactions(publicKey, limit ? Number(limit) : undefined);
+    // Clamp to a sane window; garbage/absent falls back to the service default.
+    const parsed = Number(limit);
+    const safe = Number.isInteger(parsed) && parsed > 0 ? Math.min(parsed, 200) : undefined;
+    return this.stellar.getTransactions(publicKey, safe);
   }
 }

@@ -1,5 +1,15 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
+import { IsNotEmpty, IsOptional } from 'class-validator';
+import {
+  IsStellarPublicKey,
+  IsStellarAmount,
+  IsStellarAssetCode,
+  IsStellarTxHash,
+  IsClaimableBalanceId,
+  ValidAssetPair,
+  IsNumericString,
+  SanitizedText,
+} from '../common/validation/validators';
 import { randomBytes } from 'crypto';
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -7,38 +17,41 @@ import { StellarService } from '../stellar/stellar.service';
 import { HmacTokenService } from '../common/hmac-token.service';
 import { UsersService } from '../users/users.service';
 
+@ValidAssetPair()
 export class SendViaLinkDto {
   /** Decimal string exactly as it will appear on-chain. */
-  @IsString()
+  @IsStellarAmount()
   amount!: string;
 
-  @IsString()
+  @IsStellarAssetCode()
   assetCode!: string;
 
   @IsOptional()
-  @IsString()
   assetIssuer?: string;
 
   /** Days until the link expires (chain claimants can't be removed, but the
-   * backend stops advertising the link after this). */
+   * backend stops advertising the link after this). A number between 1 and
+   * 365 as a string — previously any string passed and NaN inputs produced
+   * Invalid Date expiry rows in the DB. */
   @IsOptional()
-  @IsString()
+  @IsNumericString({ min: 1, max: 365, integer: true })
   expiresInDays?: string;
 }
 
 export class RegisterClaimableBalanceDto {
-  @IsString()
+  @IsClaimableBalanceId()
   @IsNotEmpty()
   claimableBalanceId!: string;
 }
 
 export class ClaimLinkDto {
-  @IsString()
-  @Matches(/^G[A-Z2-7]{55}$/, { message: 'claimantPublicKey must be an Ed25519 account strkey.' })
+  @IsStellarPublicKey({
+    message: 'claimantPublicKey must be a valid Stellar Ed25519 account strkey (G…, checksum verified).',
+  })
   claimantPublicKey!: string;
 
   /** The on-chain transaction that performed the claim (claimed_claimable_balance). */
-  @IsString()
+  @IsStellarTxHash({ message: 'claimTxHash must be a 64-character lowercase hex transaction hash.' })
   claimTxHash!: string;
 }
 

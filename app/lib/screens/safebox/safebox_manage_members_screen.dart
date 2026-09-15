@@ -5,6 +5,7 @@ import '../../services/safebox_service.dart';
 import '../../services/wallet_service.dart';
 import '../../theme/payflex_tokens.dart';
 import '../../theme/payflex_theme.dart';
+import '../../utils/validators.dart';
 import '../../widgets/pf_buttons.dart';
 import '../../widgets/pf_motion.dart';
 import '../../widgets/pf_states.dart';
@@ -83,8 +84,11 @@ class _SafeboxManageMembersScreenState
   Future<void> _handleAddAdmin() async {
     final admin = _addController.text.trim();
     if (admin.isEmpty) return;
-    if (!admin.startsWith('G') || admin.length != 56) {
-      _showError(StateError('Enter a full Stellar public key (G…, 56 chars).'));
+    // Full SDK-backed strkey check (shape + base32 checksum) — a malformed
+    // key can never be an admin, and the error says what's wrong.
+    final err = publicKeyError(admin);
+    if (err != null) {
+      _showError(StateError(err));
       return;
     }
     final pin = await _pin();

@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { Public } from '../auth/public.decorator';
-import { QrPayService, GenerateQrDto } from './qr-pay.service';
+import { QrPayService } from './qr-pay.service';
+import { GenerateQrDto } from './dto/qr-pay.dto';
 
 @Controller('users/:id/qr')
 export class QrPayController {

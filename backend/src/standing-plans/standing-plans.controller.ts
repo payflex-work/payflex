@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
 import { StandingPlansService } from './standing-plans.service';
-import { CreateStandingPlanDto } from './standing-plans.service';
+import { CreateStandingPlanDto, SetPlanStatusDto, RecordPlanPaymentDto } from './standing-plans.service';
 
 @Controller('users/:id/standing-plans')
 export class StandingPlansController {
@@ -25,9 +25,9 @@ export class StandingPlansController {
   setStatus(
     @Param('id') id: string,
     @Param('planId') planId: string,
-    @Body('status') status: 'ACTIVE' | 'PAUSED' | 'CANCELLED',
+    @Body() dto: SetPlanStatusDto,
   ) {
-    return this.plans.setStatus(id, planId, status);
+    return this.plans.setStatus(id, planId, dto.status as 'ACTIVE' | 'PAUSED' | 'CANCELLED');
   }
 
   /**
@@ -39,8 +39,8 @@ export class StandingPlansController {
   recordPayment(
     @Param('id') id: string,
     @Param('paymentId') paymentId: string,
-    @Body('stellarTxHash') stellarTxHash: string,
+    @Body() dto: RecordPlanPaymentDto,
   ) {
-    return this.plans.recordPayment(id, paymentId, stellarTxHash);
+    return this.plans.recordPayment(id, paymentId, dto.stellarTxHash);
   }
 }

@@ -5,6 +5,7 @@ import '../../services/transfer_flow.dart';
 import '../../theme/payflex_tokens.dart';
 import '../../theme/payflex_theme.dart';
 import '../../utils/money.dart';
+import '../../utils/validators.dart';
 import '../../widgets/pf_balance_card.dart';
 import '../../widgets/pf_buttons.dart';
 import '../../widgets/pf_flow.dart';
@@ -16,6 +17,10 @@ enum _RecipientMode { payTag, address }
 /// recipient is resolved against the PayFlex directory first (so the user
 /// sees WHO they're paying), then the payment is built, signed on-device,
 /// submitted to Horizon, and recorded — see transfer_flow.dart.
+///
+/// Real-time client-side validation (hardening brief §2): recipient and
+/// amount are validated on every keystroke with inline error text, so a
+/// malformed address never reaches the (irreversible) payment flow.
 class SendMoneyScreen extends StatefulWidget {
   final AppUser user;
   const SendMoneyScreen({super.key, required this.user});
@@ -34,18 +39,62 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
   String? _error;
 
   @override
+  void initState() {
+    super.initState();
+    // Re-validate on every keystroke so inline errors appear as the user
+    // types, not only after a failed submit.
+    _recipientController.addListener(_revalidate);
+    _amountController.addListener(_revalidate);
+  }
+
+  @override
   void dispose() {
     _recipientController.dispose();
     _amountController.dispose();
     super.dispose();
   }
 
-  Future<void> _send() async {
+  void _revalidate() {
+    if (mounted) setState(() {});
+  }
+
+  /// Inline recipient error, shown under the field as the user types.
+  String? get _recipientError {
     final recipient = _recipientController.text.trim();
-    if (recipient.isEmpty || parseAmount(_amountController.text) <= 0) {
-      setState(() => _error = 'Enter a recipient and an amount.');
+    if (recipient.isEmpty) return null; // empty shows nothing until submit
+    if (_mode == _RecipientMode.payTag) {
+      final tag = recipient.startsWith('@') ? recipient.substring(1) : recipient;
+      return isValidPayTag(tag) ? null : '3-20 lowercase letters, digits or underscore.';
+    }
+    return publicKeyError(recipient);
+  }
+
+  /// Inline amount error, shown under the field as the user types.
+  String? get _amountError {
+    final text = _amountController.text.trim();
+    if (text.isEmpty) return null;
+    return amountError(text);
+  }
+
+  /// Full pre-submit check — mirrors exactly what the inline errors show.
+  String? _validateForm() {
+    final recipientError = _recipientError ?? (_recipientController.text.trim().isEmpty
+        ? (_mode == _RecipientMode.address
+            ? 'Enter the recipient\u2019s Stellar address.'
+            : 'Enter the recipient\u2019s PayTag.')
+        : null);
+    if (recipientError != null) return recipientError;
+    final amountErr = _amountError ?? (_amountController.text.trim().isEmpty ? 'Enter an amount.' : null);
+    return amountErr;
+  }
+
+  Future<void> _send() async {
+    final validationError = _validateForm();
+    if (validationError != null) {
+      setState(() => _error = validationError);
       return;
     }
+    final recipient = _recipientController.text.trim();
     setState(() {
       _busy = true;
       _error = null;
@@ -99,6 +148,8 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final recipientError = _recipientError;
+    final amountErrorText = _amountError;
     return Theme(
       data: PayFlexTheme.light,
       child: Scaffold(
@@ -137,7 +188,10 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
                       ButtonSegment(value: _RecipientMode.address, label: Text('Address')),
                     ],
                     selected: {_mode},
-                    onSelectionChanged: (s) => setState(() => _mode = s.first),
+                    onSelectionChanged: (s) => setState(() {
+                      _mode = s.first;
+                      _revalidate();
+                    }),
                   ),
                   const SizedBox(height: 18),
                   TextField(
@@ -148,8 +202,13 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
                         _RecipientMode.address => 'Recipient Stellar address',
                       },
                       prefixIcon: const Icon(Icons.alternate_email_outlined, size: 20),
+                      errorText: recipientError,
+                      errorMaxLines: 2,
                     ),
                     keyboardType: TextInputType.text,
+                    inputFormatters:
+                        _mode == _RecipientMode.payTag ? payTagInputFormatters() : null,
+                    autofillHints: const [],
                   ),
                   const SizedBox(height: 6),
                   Text(
@@ -188,7 +247,9 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
                             ),
                             keyboardType: const TextInputType.numberWithOptions(
                               decimal: true,
+                              signed: false, // no negative sign at the keyboard
                             ),
+                            inputFormatters: amountInputFormatters(),
                             style: PfMoneyType.large.copyWith(
                               color: PfColors.ink,
                             ),
@@ -206,18 +267,31 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 6),
-                    child: Text(
-                      parseAmount(_amountController.text) > 0
-                          ? 'You\u2019re sending ${formatMoney(_amountController.text, _assetCode)}'
-                          : 'Sign the payment with your 6-digit PIN when it\u2019s ready.',
-                      style: const TextStyle(
-                        color: PfColors.inkMuted,
-                        fontSize: 12.5,
+                  if (amountErrorText != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(6, 4, 6, 0),
+                      child: Text(
+                        amountErrorText,
+                        style: const TextStyle(
+                          color: PfColors.danger,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    )
+                  else
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      child: Text(
+                        parseAmount(_amountController.text) > 0
+                            ? 'You\u2019re sending ${formatMoney(_amountController.text, _assetCode)}'
+                            : 'Sign the payment with your 6-digit PIN when it\u2019s ready.',
+                        style: const TextStyle(
+                          color: PfColors.inkMuted,
+                          fontSize: 12.5,
+                        ),
                       ),
                     ),
-                  ),
                   const SizedBox(height: 6),
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 6),

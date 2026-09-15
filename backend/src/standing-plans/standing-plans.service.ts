@@ -1,5 +1,14 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsIn, IsOptional } from 'class-validator';
+import {
+  IsStellarAmount,
+  IsStellarAssetCode,
+  IsStellarPublicKey,
+  IsStellarTxHash,
+  IsPayTag,
+  ValidAssetPair,
+  SanitizedText,
+} from '../common/validation/validators';
 import { PrismaService } from '../prisma/prisma.service';
 
 const FREQUENCY_MS: Record<string, number> = {
@@ -8,37 +17,56 @@ const FREQUENCY_MS: Record<string, number> = {
   MONTHLY: 30 * 24 * 60 * 60 * 1000,
 };
 
+export const PLAN_FREQUENCIES = ['DAILY', 'WEEKLY', 'MONTHLY'] as const;
+export const PLAN_STATUSES = ['ACTIVE', 'PAUSED', 'CANCELLED'] as const;
+
+/** Request to create a recurring plan (marked DUE by the scheduler — never executed server-side). */
+@ValidAssetPair()
 export class CreateStandingPlanDto {
-  @IsString()
-  @IsNotEmpty()
+  @SanitizedText({ max: 60, min: 1 })
   name!: string;
 
-  @IsString()
-  @IsNotEmpty()
+  @IsStellarAmount()
   amount!: string;
 
-  @IsString()
-  @IsNotEmpty()
+  @IsStellarAssetCode()
   assetCode!: string;
 
   @IsOptional()
-  @IsString()
   assetIssuer?: string;
 
-  @IsString()
+  // DTO-level membership (belt) + service check (suspenders) below.
+  @IsIn(PLAN_FREQUENCIES as unknown as string[], {
+    message: 'frequency must be one of DAILY, WEEKLY, MONTHLY.',
+  })
   frequency!: string;
 
   @IsOptional()
-  @IsString()
+  @IsStellarPublicKey({ message: 'toPublicKey must be a valid Stellar Ed25519 account strkey (G…).' })
   toPublicKey?: string;
 
   @IsOptional()
-  @IsString()
+  @IsPayTag({ message: 'toPayTag must be 3-20 characters: lowercase letters, digits, underscore.' })
   toPayTag?: string;
 
   @IsOptional()
-  @IsString()
+  @SanitizedText({ max: 200 })
   description?: string;
+}
+
+/** PUT /users/:id/standing-plans/:planId/status body — previously read raw
+ * off @Body('status') with no validation, so any string landed in the DB. */
+export class SetPlanStatusDto {
+  @IsIn(PLAN_STATUSES as unknown as string[], {
+    message: 'status must be one of ACTIVE, PAUSED, CANCELLED.',
+  })
+  status!: string;
+}
+
+/** POST /users/:id/standing-plans/payments/:paymentId/record body. */
+export class RecordPlanPaymentDto {
+  @IsStellarTxHash({ message: 'stellarTxHash must be a 64-character lowercase hex transaction hash.' })
+  stellarTxHash!: string;
 }
 
 /**

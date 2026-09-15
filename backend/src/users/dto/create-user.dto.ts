@@ -1,15 +1,16 @@
 import { IsEmail, IsNotEmpty, IsString, Matches } from 'class-validator';
+import { SanitizedText } from '../../common/validation/validators';
 
 export class CreateUserDto {
-  @IsString()
-  @IsNotEmpty()
+  @SanitizedText({ max: 50, min: 1 })
   firstName!: string;
 
-  @IsString()
-  @IsNotEmpty()
+  @SanitizedText({ max: 50, min: 1 })
   lastName!: string;
 
-  @IsEmail()
+  // Cap before the DB sees it; IsEmail does the real format work.
+  @IsEmail({}, { message: 'email must be a valid email address.' })
+  @IsNotEmpty()
   email!: string;
 
   // E.164, e.g. +2348000000001 — a bare local-format number is rejected.

@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { IsOptional, IsString } from 'class-validator';
 import { HmacTokenService } from '../common/hmac-token.service';
 import { UsersService } from '../users/users.service';
+import { GenerateQrDto } from './dto/qr-pay.dto';
 
 export interface QrPayload {
   recipientAppUserId: string;
@@ -12,21 +12,10 @@ export interface QrPayload {
   expiresAt: string;
 }
 
-export class GenerateQrDto {
-  @IsString()
-  amount!: string;
-
-  @IsString()
-  assetCode!: string;
-
-  @IsOptional()
-  @IsString()
-  assetIssuer?: string;
-
-  @IsOptional()
-  @IsString()
-  expiresInSeconds?: number;
-}
+/**
+ * GenerateQrDto lives in ./dto/qr-pay.dto.ts with full validation
+ * (amount bounds, asset pair, bounded expiry).
+ */
 
 /**
  * App-layer QR Pay — a short-lived, HMAC-signed payload naming a
@@ -45,7 +34,7 @@ export class QrPayService {
 
   async generate(
     appUserId: string,
-    params: { amount: string; assetCode: string; assetIssuer?: string; expiresInSeconds?: number },
+    params: GenerateQrDto,
   ): Promise<{ token: string; payload: QrPayload }> {
     const user = await this.users.findById(appUserId);
     if (!user.stellarPublicKey) {

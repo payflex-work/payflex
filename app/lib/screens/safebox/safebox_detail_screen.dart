@@ -6,6 +6,7 @@ import '../../services/safebox_service.dart';
 import '../../services/wallet_service.dart';
 import '../../theme/payflex_tokens.dart';
 import '../../theme/payflex_theme.dart';
+import '../../utils/validators.dart';
 import '../../widgets/pf_balance_card.dart';
 import '../../widgets/pf_buttons.dart';
 import '../../widgets/pf_flow.dart';
@@ -121,45 +122,98 @@ class _SafeboxDetailScreenState extends State<SafeboxDetailScreen> {
   }) async {
     final amountController = TextEditingController();
     final noteController = TextEditingController();
+    // Available balance shown as the ceiling for this dialog's amount —
+    // the contract itself is the true enforcer, but telling the user
+    // up front beats a failed on-chain attempt.
+    final available = double.tryParse(
+          ((_detail?['chain'] as Map<String, dynamic>?)?['balance'] as String?) ?? '0',
+        ) ??
+        0;
+
+    // NOTE: Flutter's showDialog builder closure cannot reference `this`
+    // inside a plain State method safely after dispose — validation state
+    // lives in a ValueNotifier owned by the dialog itself.
+    final amountValid = ValueNotifier<bool>(false);
+    final amountErrorText = ValueNotifier<String?>(null);
+
+    void revalidate() {
+      // Shared validator (incl. the balance ceiling) — same rules the
+      // widget tests exercise.
+      final effective = withdrawalAmountError(amountController.text.trim(), available);
+      amountErrorText.value = effective;
+      amountValid.value = effective == null;
+    }
+
+    amountController.addListener(revalidate);
 
     final ok = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: Text(title),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(
-              controller: amountController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(prefixText: 'XLM ', labelText: amountLabel),
+            ValueListenableBuilder<String?>(
+              valueListenable: amountErrorText,
+              builder: (context, errorText, _) => TextField(
+                controller: amountController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: false),
+                inputFormatters: amountInputFormatters(),
+                decoration: InputDecoration(
+                  prefixText: 'XLM ',
+                  labelText: amountLabel,
+                  errorText: errorText,
+                  errorMaxLines: 2,
+                ),
+              ),
             ),
             const SizedBox(height: PfSpace.md),
             TextField(
               controller: noteController,
-              decoration: InputDecoration(labelText: noteLabel, hintText: 'e.g. September deposit'),
+              maxLength: 100,
+              decoration: InputDecoration(
+                labelText: noteLabel,
+                hintText: 'e.g. September deposit',
+                helperText: 'Max 100 characters',
+                counterText: '',
+              ),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Continue')),
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          ValueListenableBuilder<bool>(
+            valueListenable: amountValid,
+            builder: (context, valid, _) => FilledButton(
+              // Disabled until the amount is valid — invalid input can't
+              // even proceed, let alone reach the chain.
+              onPressed: valid
+                  ? () {
+                      final note = sanitizeText(noteController.text);
+                      if (noteRequired && note.isEmpty) {
+                        amountErrorText.value = 'A note/reason is required for withdrawal accountability.';
+                        return;
+                      }
+                      Navigator.pop(dialogContext, true);
+                    }
+                  : null,
+              child: const Text('Continue'),
+            ),
+          ),
         ],
       ),
     );
 
+    amountController.dispose();
+    noteController.dispose();
+    amountValid.dispose();
+    amountErrorText.dispose();
+
     if (ok != true) return null;
     final amount = double.tryParse(amountController.text.trim());
     if (amount == null || amount <= 0) return null;
-    final note = noteController.text.trim();
-    if (noteRequired && note.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('A note/reason is required for withdrawal accountability.')),
-        );
-      }
-      return null;
-    }
+    final note = sanitizeText(noteController.text);
+    if (noteRequired && note.isEmpty) return null;
     return (amount: amount, note: note);
   }
 

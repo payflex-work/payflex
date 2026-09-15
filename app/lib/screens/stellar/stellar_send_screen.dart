@@ -3,6 +3,7 @@ import '../../stellar/stellar_client.dart';
 import '../../stellar/stellar_models.dart';
 import '../../theme/payflex_tokens.dart';
 import '../../theme/payflex_theme.dart';
+import '../../utils/validators.dart';
 import '../../widgets/pf_buttons.dart';
 import '../../widgets/pf_states.dart';
 import '../../widgets/pin_prompt.dart';
@@ -35,6 +36,9 @@ class _StellarSendScreenState extends State<StellarSendScreen> {
   void initState() {
     super.initState();
     _selectedAsset = widget.summary.balances.first;
+    // Real-time validation: inline errors while the user types.
+    _destinationController.addListener(() => mounted ? setState(() {}) : null);
+    _amountController.addListener(() => mounted ? setState(() {}) : null);
   }
 
   @override
@@ -44,10 +48,32 @@ class _StellarSendScreenState extends State<StellarSendScreen> {
     super.dispose();
   }
 
+  /// Inline recipient error — a malformed address must never reach the
+  /// (irreversible) payment flow, so this is checked on every keystroke.
+  String? get _destinationError {
+    final destination = _destinationController.text.trim();
+    if (destination.isEmpty) return null;
+    return publicKeyError(destination);
+  }
+
+  String? get _amountErrorText {
+    final amount = _amountController.text.trim();
+    if (amount.isEmpty) return null;
+    return amountError(amount);
+  }
+
   Future<void> _submit() async {
     final destination = _destinationController.text.trim();
     final amount = _amountController.text.trim();
-    if (destination.isEmpty || amount.isEmpty) return;
+    // Full pre-submit gate: the inline errors and this check share one
+    // source of truth, so what blocks submit is exactly what's on screen.
+    final destErr = _destinationError ??
+        (destination.isEmpty ? 'Enter the recipient\u2019s Stellar address.' : null);
+    final amtErr = _amountErrorText ?? (amount.isEmpty ? 'Enter an amount.' : null);
+    if (destErr != null || amtErr != null) {
+      setState(() => _error = destErr ?? amtErr);
+      return;
+    }
 
     setState(() {
       _sending = true;
@@ -213,7 +239,12 @@ class _StellarSendScreenState extends State<StellarSendScreen> {
         ],
         TextField(
           controller: _destinationController,
-          decoration: const InputDecoration(labelText: 'Recipient Stellar address', hintText: 'G...'),
+          decoration: InputDecoration(
+            labelText: 'Recipient Stellar address',
+            hintText: 'G...',
+            errorText: _destinationError,
+            errorMaxLines: 2,
+          ),
         ),
         const SizedBox(height: 14),
         DropdownButtonFormField<StellarBalance>(
@@ -227,8 +258,12 @@ class _StellarSendScreenState extends State<StellarSendScreen> {
         const SizedBox(height: 14),
         TextField(
           controller: _amountController,
-          decoration: const InputDecoration(labelText: 'Amount'),
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(
+            labelText: 'Amount',
+            errorText: _amountErrorText,
+          ),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: false),
+          inputFormatters: amountInputFormatters(),
         ),
         const SizedBox(height: 24),
         PfPrimaryButton(label: 'Review and send', busy: _sending, onPressed: _sending ? null : _submit),

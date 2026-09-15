@@ -7,6 +7,7 @@ import '../../theme/payflex_tokens.dart';
 import '../../theme/payflex_theme.dart';
 import '../../utils/format.dart';
 import '../../utils/money.dart';
+import '../../utils/validators.dart';
 import '../../widgets/pf_balance_card.dart';
 import '../../widgets/pf_buttons.dart';
 import '../../widgets/pf_flow.dart';
@@ -41,17 +42,17 @@ class _StandingPlansScreenState extends State<StandingPlansScreen> {
   String? _error;
 
   @override
-  void dispose() {
-    _nameController.dispose();
-    _amountController.dispose();
-    _recipientController.dispose();
-    super.dispose();
-  }
-
-  @override
   void initState() {
     super.initState();
+    // Re-validate on every keystroke so inline errors appear live.
+    _nameController.addListener(_revalidate);
+    _recipientController.addListener(_revalidate);
+    _amountController.addListener(_revalidate);
     _load();
+  }
+
+  void _revalidate() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _load() async {
@@ -73,9 +74,44 @@ class _StandingPlansScreenState extends State<StandingPlansScreen> {
     }
   }
 
+  /// Inline errors while the user types (single shared source of truth
+  /// with the pre-submit check below).
+  String? get _nameError {
+    final name = _nameController.text.trim();
+    if (name.isEmpty || name.length <= 60) return null;
+    return 'Name must be at most 60 characters.';
+  }
+
+  String? get _recipientError {
+    final recipient = _recipientController.text.trim();
+    if (recipient.isEmpty) return null;
+    if (recipient.startsWith('@')) {
+      return isValidPayTag(recipient.substring(1))
+          ? null
+          : 'PayTag: 3-20 lowercase letters, digits or underscore.';
+    }
+    return publicKeyError(recipient);
+  }
+
+  String? get _amountErrorText {
+    final text = _amountController.text.trim();
+    if (text.isEmpty) return null;
+    return amountError(text);
+  }
+
   Future<void> _create() async {
     final recipient = _recipientController.text.trim();
-    if (_nameController.text.trim().isEmpty || _amountController.text.trim().isEmpty || recipient.isEmpty) {
+    // Pre-submit: same validators the inline errors use.
+    String? blockReason;
+    if (_nameController.text.trim().isEmpty) {
+      blockReason = 'Give the plan a name.';
+    } else if (recipient.isEmpty) {
+      blockReason = 'Enter a recipient (@paytag or G… address).';
+    } else {
+      blockReason = _recipientError ?? _amountErrorText ?? amountError(_amountController.text.trim());
+    }
+    if (blockReason != null) {
+      setState(() => _error = blockReason);
       return;
     }
     setState(() {
@@ -221,14 +257,16 @@ class _StandingPlansScreenState extends State<StandingPlansScreen> {
           const SizedBox(height: 14),
           TextField(
             controller: _nameController,
-            decoration: const InputDecoration(labelText: 'Name (e.g. Rent)'),
+            decoration: InputDecoration(labelText: 'Name (e.g. Rent)', errorText: _nameError),
           ),
           const SizedBox(height: 10),
           TextField(
             controller: _recipientController,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Recipient',
               hintText: '@paytag or a Stellar address (G…)',
+              errorText: _recipientError,
+              errorMaxLines: 2,
             ),
           ),
           const SizedBox(height: 10),
@@ -238,8 +276,9 @@ class _StandingPlansScreenState extends State<StandingPlansScreen> {
               Expanded(
                 child: TextField(
                   controller: _amountController,
-                  decoration: const InputDecoration(labelText: 'Amount'),
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(labelText: 'Amount', errorText: _amountErrorText),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: false),
+                  inputFormatters: amountInputFormatters(),
                 ),
               ),
               const SizedBox(width: 12),

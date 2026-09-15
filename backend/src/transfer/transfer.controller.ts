@@ -55,6 +55,10 @@ export class TransferController {
 
   @Get('users/:id/transfers')
   listTransfers(@Param('id') id: string, @Query('limit') limit?: string) {
-    return this.transfers.listTransfers(id, limit ? Number(limit) : 50);
+    // Clamp to a sane window: NaN/garbage falls back to 50, and a caller
+    // asking for a million rows gets 200, not a database dump.
+    const parsed = Number(limit);
+    const safe = Number.isInteger(parsed) && parsed > 0 ? Math.min(parsed, 200) : 50;
+    return this.transfers.listTransfers(id, safe);
   }
 }

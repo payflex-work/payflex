@@ -5,6 +5,7 @@ import '../../services/safebox_service.dart';
 import '../../services/wallet_service.dart';
 import '../../theme/payflex_tokens.dart';
 import '../../theme/payflex_theme.dart';
+import '../../utils/validators.dart';
 import '../../widgets/pf_buttons.dart';
 import '../../widgets/pf_flow.dart';
 import '../../widgets/pf_states.dart';
@@ -31,6 +32,30 @@ class _SafeboxCreateScreenState extends State<SafeboxCreateScreen> {
   String? _statusLine;
 
   @override
+  void initState() {
+    super.initState();
+    _nameController.addListener(_revalidate);
+    _descController.addListener(_revalidate);
+  }
+
+  void _revalidate() {
+    if (mounted) setState(() {});
+  }
+
+  String? get _nameError {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) return null;
+    if (name.length > 50) return 'Name must be at most 50 characters.';
+    return null;
+  }
+
+  String? get _descError {
+    final desc = _descController.text.trim();
+    if (desc.length > 200) return 'Description must be at most 200 characters.';
+    return null;
+  }
+
+  @override
   void dispose() {
     _nameController.dispose();
     _descController.dispose();
@@ -39,8 +64,15 @@ class _SafeboxCreateScreenState extends State<SafeboxCreateScreen> {
 
   Future<void> _handleCreate() async {
     final name = _nameController.text.trim();
+    // Pre-submit: mirrors the backend's RegisterSafeboxDto caps.
+    String? blockReason;
     if (name.isEmpty) {
-      setState(() => _error = 'Give the Safebox a name.');
+      blockReason = 'Give the Safebox a name.';
+    } else {
+      blockReason = _nameError ?? _descError;
+    }
+    if (blockReason != null) {
+      setState(() => _error = blockReason);
       return;
     }
 
@@ -72,6 +104,7 @@ class _SafeboxCreateScreenState extends State<SafeboxCreateScreen> {
       // Deploy + init(owner = this device's key, token = native XLM SAC).
       // The wasm must already be installed on this network; its hash is
       // deployment tooling's output (see backend/contracts/safebox README).
+      // Sanitized to mirror the backend's stored form.
       const wasmHash = String.fromEnvironment('SAFEBOX_WASM_HASH');
       if (wasmHash.isEmpty) {
         throw StateError(
@@ -90,8 +123,8 @@ class _SafeboxCreateScreenState extends State<SafeboxCreateScreen> {
       await _api.registerSafebox(
         widget.user.id,
         contractId: contractId,
-        name: name,
-        description: _descController.text.trim(),
+        name: sanitizeText(name),
+        description: sanitizeText(_descController.text),
       );
 
       if (!mounted) return;
@@ -152,9 +185,12 @@ class _SafeboxCreateScreenState extends State<SafeboxCreateScreen> {
               const SizedBox(height: PfSpace.xs),
               TextField(
                 controller: _nameController,
-                decoration: const InputDecoration(
+                maxLength: 50,
+                decoration: InputDecoration(
                   hintText: 'e.g. Amina & friends Q4 pool',
                   filled: true,
+                  errorText: _nameError,
+                  counterText: '',
                 ),
               ),
               const SizedBox(height: PfSpace.lg),
@@ -166,9 +202,12 @@ class _SafeboxCreateScreenState extends State<SafeboxCreateScreen> {
               TextField(
                 controller: _descController,
                 maxLines: 3,
-                decoration: const InputDecoration(
+                maxLength: 200,
+                decoration: InputDecoration(
                   hintText: 'What is this pool for?',
                   filled: true,
+                  errorText: _descError,
+                  counterText: '',
                 ),
               ),
               const SizedBox(height: PfSpace.xl),
