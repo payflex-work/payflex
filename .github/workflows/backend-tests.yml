@@ -1,9 +1,26 @@
 name: Backend tests
 
-# Run the NestJS backend's unit test suite (Jest + ts-jest) on every push.
-# Pure unit tests — no Postgres/Redis needed; Prisma generate is included
-# because @prisma/client's generated code must exist before tsc/jest run.
-# Flutter is intentionally not exercised here — no Flutter CI in this repo yet.
+# Run the backend test suite (Jest, config test/jest-e2e.json) on every push.
+#
+# These are real e2e specs: each one boots the full AppModule over an HTTP
+# listener with only StellarService stubbed, writes real rows, and asserts
+# against real responses. That requires the same boot-critical environment
+# production has — all three are enforced at DI time and the app refuses to
+# start without them:
+#   - DATABASE_URL       PrismaService (app data + the login-challenge store)
+#   - JWT_SECRET         token.module.ts
+#   - QR_SIGNING_SECRET  hmac-token.service.ts
+# A Postgres service is provisioned below and `prisma migrate deploy`
+# applies every migration before tests run, so the schema — including the
+# Postgres-backed LoginChallenge table that replaced Redis (43d2cfb) — is
+# always present. Values marked ci-only are throwaways scoped to this job.
+#
+# Historics: this job was created when the suite was pure unit tests (no
+# DB/env needed). 31653cd introduced the e2e specs without updating this
+# job, which is why CI stayed red through the docs-only commits that
+# followed. Flutter CI remains in flutter-tests.yml; the container-level
+# equivalent of this flow (image + fresh-DB migration + /v1/health) lives
+# in backend-docker.yml.
 
 on:
   push:
@@ -16,12 +33,30 @@ concurrency:
 
 jobs:
   test:
-    name: Unit tests + typecheck
+    name: E2E tests + typecheck
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: backend
+    env:
+      DATABASE_URL: postgresql://payflex:payflex@localhost:5432/payflex?schema=public
+      JWT_SECRET: ci-only-secret-not-for-production
+      QR_SIGNING_SECRET: ci-only-secret-not-for-production
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: payflex
+          POSTGRES_PASSWORD: payflex
+          POSTGRES_DB: payflex
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U payflex"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -37,8 +72,11 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
+      - name: Apply migrations to the CI database
+        run: npx prisma migrate deploy
+
       - name: Typecheck
         run: npx tsc --noEmit
 
-      - name: Unit tests
+      - name: Tests
         run: npm test
