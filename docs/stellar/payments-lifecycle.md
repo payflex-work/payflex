@@ -1,7 +1,7 @@
 # Payments lifecycle
 
 Every PayFlex payment — typed transfer, QR scan, PayTag, split-bill
-share, or link claim — follows the same five steps. The server builds;
+share, or link claim — follows the same five steps. The backend builds;
 the device signs; Stellar settles; the indexer remembers.
 
 ## The five steps

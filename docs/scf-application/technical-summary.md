@@ -58,7 +58,7 @@ The offline optical protocol is a genuine technical contribution:
   offline spends cannot be reordered, replayed, or overspent, and each spend's
   state hash chains to the previous one.
 - **Honest settlement semantics**: an offline payment is presented as
-  "confirmed — settlement pending" and becomes an ordinary, explorer-visible
+  "verified — settlement pending" and becomes an ordinary, explorer-visible
   Stellar payment (`kind=OFFLINE_REDEMPTION`) on reconnect. The app never
   claims "settled" before the chain says so.
 

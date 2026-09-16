@@ -14,7 +14,7 @@ Stellar.**
    device-key signature, monotonic sequence, hash-chained authorization), and
    the signed `PaymentConfirmation` streamed back over the animated QR.
 4. **The receipt** — receiver verifies the confirmation against its own
-   request; status reads honestly: *confirmed — settlement pending*.
+   request; status reads honestly: *verified — settlement pending*.
 5. **Reconnect + settle** — a real Stellar testnet payment built and signed
    on-device, submitted to Horizon, with the transaction hash on screen.
 

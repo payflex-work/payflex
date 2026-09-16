@@ -9,6 +9,7 @@
     "build": "npm --prefix backend run build",
     "start": "npm --prefix backend run start:prod",
     "typecheck": "npm --prefix backend exec tsc -- --noEmit -p backend/tsconfig.json",
+    "check:docs": "python3 scripts/check_doc_links.py",
     "verify:offline": "npm --prefix backend run verify:offline"
   }
 }

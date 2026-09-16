@@ -18,7 +18,7 @@
 
 📖 **Documentation**: [NextGen GitBook Docs](https://nextgen-4.gitbook.io/nextgen-docs/backend)
 
-> **Honest status: this is a working Stellar **testnet** application, not a bank.**
+> **Honest status: this is a working Stellar *testnet* application, not a bank.**
 > Fiat on/off-ramps and identity verification (KYC) are **not implemented** —
 > no provider is plugged in, the app is hard-gated from ever claiming otherwise,
 > and several features that need a fiat rail are paused, not faked.
@@ -27,6 +27,15 @@
 PayFlex is a non-custodial payments app on Stellar: every user **is** a Stellar
 account. The keypair is generated on-device, the secret seed never leaves the
 phone, and every payment is built, signed, and submitted from the device.
+
+**Contents**: [Stellar is the only rail](#stellar-is-the-only-rail) ·
+[What works today](#what-works-today-testnet) ·
+[What is paused](#what-is-paused-honestly--not-hidden) ·
+[The fiat/KYC gap](#the-fiatkyc-plug-in-gap) ·
+[Documentation](#documentation) · [Architecture](#architecture) ·
+[Getting started](#getting-started) ·
+[Verification status](#verification-status) ·
+[Engineering rules](#engineering-rules)
 
 ## Stellar is the only rail
 
@@ -37,6 +46,7 @@ banking layer. The architecture:
   keychain/keystore (`flutter_secure_storage`); only public keys and
   signatures ever leave the device. Accepted trade-off: lose the device and
   the seed, lose the account — there is no support-restore path.
+  See [`docs/stellar/accounts-and-keys.md`](docs/stellar/accounts-and-keys.md).
 - **The backend never signs.** PayFlex's NestJS backend (`backend/src/stellar/`)
   is a thin, read-only companion: account lookups, transaction-history
   verification for recorded transfers, and read-only Soroban contract reads.
@@ -47,7 +57,9 @@ banking layer. The architecture:
   and verified against the registered public key — no passwords.
 - **Every recorded payment is verified on-chain.** When the app reports a
   transfer, the backend pulls the real transaction from Horizon and checks it
-  matches every claimed field before storing anything.
+  matches every claimed field before storing anything —
+  [`docs/stellar/payments-lifecycle.md`](docs/stellar/payments-lifecycle.md)
+  walks the full path.
 
 ## What works today (testnet)
 
@@ -56,9 +68,9 @@ banking layer. The architecture:
 | **Transfers / PayTag / QR Pay** | resolve → PIN → build → sign on-device → submit → record (verified) |
 | **Standing plans** | scheduler marks payments DUE; paying is the normal on-device flow (no delegated debit exists on Stellar, and the app refuses to fake one) |
 | **Safebox group savings** | a real **Soroban escrow contract** (`backend/contracts/safebox`): owner/admin-only withdrawal and the 3-admin cap enforced **on-chain**; contributions/withdrawals in the contract's own ledger, visible to all members |
-| **Send via link** | non-custodial on-chain **claimable balances** — escrowed by the chain, never by PayFlex |
+| **Send via link** | non-custodial on-chain **claimable balances** — escrowed by the chain, never by PayFlex ([links](docs/stellar/payments-lifecycle.md#claimable-balances-send-via-link)) |
 | **Split bills** | orchestration only; each contributor pays the creator with an independent on-device payment |
-| **Offline Reserve / optical QR** | two-device offline handoff signed by an independent device key; **redemption** settles as a real Stellar payment on reconnect |
+| **Offline Reserve / optical QR** | two-device offline handoff signed by an independent device key; **redemption** settles as a real Stellar payment on reconnect ([how it works](docs/stellar/offline-reserve.md)) |
 | **Admin** | server-gated (`AdminGuard`); shows Stellar accounts, verified transfers, and Safebox (Soroban) state |
 
 ## What is paused, honestly — not hidden
@@ -87,6 +99,10 @@ credentials:
 - `backend/src/providers/identity-verification-provider.ts` (KYC; SEP-12-shaped)
 - `backend/src/providers/fiat-rail-provider.ts` (deposit/withdraw fiat ↔ Stellar asset; SEP-6/24-shaped)
 
+The full analysis — what a real implementation would look like, and every
+feature paused because of the gap — is in
+[`docs/fiat-kyc-gap.md`](docs/fiat-kyc-gap.md).
+
 `identityVerified` and `fiatCapable` default to `false` on every account and
 **no code path can set them true** until a real provider exists. Reference
 options for later (a real anchor such as LINK/NGNC, or another regulated
@@ -95,7 +111,15 @@ partner) are discussed without commitment in `/docs/fiat-kyc-gap.md`.
 ## Documentation
 
 - **GitBook Documentation**: [https://nextgen-4.gitbook.io/nextgen-docs/backend](https://nextgen-4.gitbook.io/nextgen-docs/backend)
-- **Local Guides**: See the [`docs/`](docs/) directory for architecture, deployment, the fiat/KYC gap analysis, and Stellar deep-dives.
+- **In-repo docs**: [`docs/README.md`](docs/README.md) is the index; the map below says what each document answers.
+
+| Document | Answers the question… |
+|---|---|
+| [`docs/architecture.md`](docs/architecture.md) | How is the system put together, and why can't the backend move money? |
+| [`docs/deploy.md`](docs/deploy.md) | How do I deploy the backend (Railway / Render / Fly.io) and point the app at it? |
+| [`docs/fiat-kyc-gap.md`](docs/fiat-kyc-gap.md) | What can this app *not* do, and where would a real fiat/KYC provider plug in? |
+| [`docs/stellar/README.md`](docs/stellar/README.md) | Index of the Stellar deep dives: accounts & keys, SEP-10 login, payments lifecycle, Safebox (Soroban), the offline protocol, testnet vs mainnet. |
+| [`docs/scf-application/README.md`](docs/scf-application/README.md) | Stellar Community Fund submission drafts (project-specific, not engineering docs). |
 
 ## Architecture
 
@@ -103,7 +127,7 @@ partner) are discussed without commitment in `/docs/fiat-kyc-gap.md`.
 app/       Flutter mobile app (iOS + Android) — non-custodial Stellar wallet
 backend/   NestJS service: directory, verification, orchestration (never signs)
 contracts/ backend/contracts/safebox — the Soroban escrow contract
-docs/      architecture, deployment, the fiat/KYC gap, Stellar deep-dives
+docs/      this documentation set — start at docs/README.md
 ```
 
 Two hard boundaries hold it together:
